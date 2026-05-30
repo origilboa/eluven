@@ -1,0 +1,45 @@
+name: Deploy to production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Install Python dependencies
+        run: |
+          pip install poetry
+          poetry install
+        working-directory: backend
+
+      - name: Run all tests
+        run: poetry run pytest
+        working-directory: backend
+
+      - name: Install JS dependencies
+        run: npm install -g pnpm && pnpm install
+        working-directory: frontend
+
+      - name: Deploy with SST
+        run: npx sst deploy --stage production

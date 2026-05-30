@@ -1,0 +1,56 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python dependencies
+        run: |
+          pip install poetry
+          poetry install
+        working-directory: backend
+
+      - name: Ruff lint
+        run: poetry run ruff check .
+        working-directory: backend
+
+      - name: Pyright type check
+        run: poetry run pyright
+        working-directory: backend
+
+      - name: Python unit + integration tests
+        run: poetry run pytest tests/unit tests/integration
+        working-directory: backend
+
+      - name: Install JS dependencies
+        run: npm install -g pnpm && pnpm install
+        working-directory: frontend
+
+      - name: ESLint
+        run: pnpm lint
+        working-directory: frontend
+
+      - name: TypeScript check
+        run: pnpm tsc --noEmit
+        working-directory: frontend
+
+      - name: Jest component tests
+        run: pnpm test
+        working-directory: frontend
