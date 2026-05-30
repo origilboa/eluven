@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "eluven-backend"
+version = "0.1.0"
+description = "Eluven backend API"
+authors = ["Ori Gilboa <ori.gilboa@eluven.ai>"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
+sqlalchemy = "^2.0.0"
+alembic = "^1.14.0"
+psycopg2-binary = "^2.9.0"
+pgvector = "^0.3.0"
+pydantic = "^2.10.0"
+pydantic-settings = "^2.7.0"
+boto3 = "^1.35.0"
+structlog = "^24.4.0"
+unstructured = "^0.16.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+ruff = "^0.8.0"
+pyright = "^1.1.390"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
