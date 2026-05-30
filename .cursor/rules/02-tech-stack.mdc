@@ -1,0 +1,62 @@
+---
+description: Tech stack, libraries, and tooling decisions — consult before suggesting any dependency
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Tech Stack
+
+## Application
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| Frontend | Next.js (React) | App router, TypeScript strict mode |
+| Backend | Python | FastAPI for API layer |
+| Database | PostgreSQL on AWS RDS | via SQLAlchemy ORM |
+| Vector DB | pgvector (PostgreSQL extension) | RAG retrieval — abstraction layer wraps it |
+| AI access | AWS Bedrock | NEVER call Anthropic SDK directly |
+| Primary AI model | Claude 3.5 Sonnet | via Bedrock — other models added via routing |
+| File storage | AWS S3 | Raw files + S3 versioning enabled |
+| Auth | NextAuth.js | Email/password for MVP |
+| Async processing | AWS SQS + Python worker | Document indexing, workflow execution |
+| Real-time | Server-Sent Events (SSE) | AI streaming + workflow status updates |
+| Infrastructure | SST on AWS CDK (Python) | NEVER use raw CDK or console clicks |
+
+## Development environment
+- Remote EC2 t3.xlarge, Ubuntu 24 LTS
+- OrbStack for local Docker containers (PostgreSQL + pgvector)
+- SST dev mode for AWS services (Bedrock, S3, SQS) — connects to real AWS, no mocks
+- Cursor via SSH remote — all execution on EC2
+
+## Key libraries — Python
+| Library | Purpose |
+|---------|---------|
+| FastAPI | API framework |
+| SQLAlchemy | ORM |
+| Alembic | Database migrations |
+| Pydantic | Data validation + structured AI output schemas |
+| boto3 | AWS SDK — Bedrock, S3, SQS, Secrets Manager |
+| Unstructured.io | Document extraction (PDF, Word, TXT, Excel, LaTeX) |
+| pgvector | Python pgvector client |
+| Ruff | Linting + formatting (replaces Black + Flake8) |
+| Pyright | Type checking |
+| Pytest | Testing |
+
+## Key libraries — Next.js / TypeScript
+| Library | Purpose |
+|---------|---------|
+| NextAuth.js | Authentication |
+| TanStack Query | Server state management |
+| Zustand | Client state |
+| ESLint + Prettier | Linting + formatting |
+| Jest + React Testing Library | Unit + component tests |
+| Playwright | E2E tests |
+
+## What NOT to use
+- ❌ Never call `anthropic` SDK directly — always use `boto3` with Bedrock
+- ❌ Never use `LocalStack` — SST dev mode connects to real AWS
+- ❌ Never use `Docker Desktop` — OrbStack only on EC2
+- ❌ Never use `npm` or `yarn` — use `pnpm` for JS packages
+- ❌ Never use `pip` directly — use `Poetry` for Python packages
+- ❌ Never use `Black` or `Flake8` — Ruff handles both
+- ❌ Never use `WidthType.PERCENTAGE` in docx generation
+- ❌ Never hardcode AWS credentials — use AWS Secrets Manager via boto3

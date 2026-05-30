@@ -1,0 +1,117 @@
+---
+description: Session protocol — how to work with this project. Read before every session.
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Session Protocol
+
+## Who you are working with
+- Solo founder building Eluven — an AI-powered academic research platform
+- Not an AWS admin — explain AWS concepts clearly when they arise
+- Using Cursor Pro with Claude as the underlying model
+- Developing on a remote EC2 instance (Ubuntu 24 LTS) via SSH — all paths and shell commands are Linux
+- Primary language: English, with Hebrew as a first-class MVP requirement
+
+## Before you write any code
+
+**Always do these in order:**
+
+1. **Read the relevant spec** — if the task touches a module, entity, or system, ask which spec document covers it and read it before generating code. The spec documents live in `/docs/spec/`. Never infer requirements from context alone.
+
+2. **Propose a plan first** — for any task touching more than one file, write out what you intend to do before doing it. Include: files to create or modify, schema changes, new dependencies. Wait for approval before executing.
+
+3. **Check the rules files** — if the task touches AI integration, check `04-ai-patterns.mdc`. Infrastructure, check `05-infrastructure.mdc`. RTL/Hebrew, check `07-rtl-i18n.mdc`. Never guess at patterns that have a rules file.
+
+4. **Check the tech stack** — before suggesting any library or tool, check `02-tech-stack.mdc`. Never suggest a dependency not already in the stack without flagging it explicitly as a new addition requiring a decision.
+
+## How to propose a plan
+
+When proposing a plan, always structure it as:
+
+```
+## Plan
+
+**What I'm building:** [one sentence]
+
+**Files I'll create:**
+- path/to/file.py — purpose
+
+**Files I'll modify:**
+- path/to/existing.py — what changes and why
+
+**New dependencies:** none / [list with justification]
+
+**Database changes:** none / [migration description]
+
+**Questions before I start:** [any ambiguities that need resolving]
+```
+
+Wait for explicit approval ("yes", "looks good", "proceed") before executing.
+
+## When generating code
+
+- **Use the domain vocabulary exactly** — Task, Thread, Cluster, Workflow, TaskMemory, InstructionLayer. Never use synonyms or informal names.
+- **Follow the conventions file** — naming, structure, type hints, docstrings. Every time.
+- **Never hardcode anything** — credentials, model IDs, thresholds, limits. All config goes through environment variables or AWS Parameter Store.
+- **Always add structured logging** — every significant operation gets a log entry. See `06-testing-logging.mdc`.
+- **Always add type hints** — Python: all function signatures and class attributes. TypeScript: strict mode, no `any`.
+- **Write tests alongside code** — unit tests for business logic, integration tests for API endpoints. Don't defer testing.
+
+## When you're unsure
+
+Say so explicitly. Do not infer, assume, or fill gaps silently. If the spec doesn't cover something, say:
+
+> "The spec doesn't define [X]. Before I proceed, should [option A] or [option B]?"
+
+Never make a silent architectural decision. Every significant choice should be visible and approvable.
+
+## What requires explicit approval before proceeding
+
+- Creating a new database table or modifying an existing schema
+- Adding a new Python or JS dependency
+- Changing an API endpoint signature
+- Modifying the context assembly order
+- Changing how task memory entries are written or structured
+- Any change to the instruction layer assembly logic
+- Introducing a new AWS service not already in the stack
+- Changing the authentication or session model
+
+## Common mistakes to avoid
+
+- ❌ Calling the Anthropic SDK directly — always use boto3 + Bedrock
+- ❌ Writing SQL strings manually — always use SQLAlchemy ORM
+- ❌ Using directional Tailwind classes (ml-, pl-, text-left) — use logical properties (ms-, ps-, text-start)
+- ❌ Using `print()` for logging — always use the structured logger
+- ❌ Putting secrets in environment files — always use AWS Secrets Manager
+- ❌ Creating infrastructure via the AWS console — always use SST
+- ❌ Using LocalStack — SST dev mode connects to real AWS
+- ❌ Querying pgvector directly from business logic — always use the RAG service abstraction
+- ❌ Calling Bedrock directly from business logic — always use the AIRouter service
+- ❌ Using directional Tailwind classes — always use logical properties for RTL support
+
+## When generating infrastructure code
+
+- All infrastructure goes in `/infra` as SST code
+- Never suggest manual AWS console steps — always SST equivalents
+- When an AWS concept is introduced (VPC, IAM role, security group), explain what it is and why it's needed in plain language
+- Always include cost implications when adding a new AWS service
+
+## Conventional Commits — always use this format
+
+```
+feat: short description of what was added
+fix: short description of what was fixed
+chore: dependency update, config change
+docs: documentation change
+test: test added or modified
+refactor: code change with no functional difference
+```
+
+## At the end of every session
+
+Remind the user to:
+1. Commit all changes with a conventional commit message
+2. Update the relevant spec document if any decisions were made
+3. Add an ADR to `/docs/adr/` if a significant architectural decision was made
+4. Note any new open questions for the next session

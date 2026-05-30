@@ -1,0 +1,46 @@
+---
+description: Project overview, domain model, and core architecture — read this first
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Academic Research Assistant Platform
+
+## What this is
+An AI-powered workspace for academic researchers. Structured, guided AI assistance for reviewing papers, evaluating student submissions, and preparing work for publication. The platform's core value is AI assistance governed by a layered instruction system.
+
+## Core domain model — use these terms exactly, never synonyms
+
+| Term | Definition |
+|------|-----------|
+| Task | Primary unit of work. Container for documents, threads, memory, context. |
+| Cluster | Optional grouping of related Tasks with shared KB and instructions. |
+| Assignment | Cluster type specific to Student Paper Review. Groups all submissions for one assessment. |
+| Submission | Task that is a child of an Assignment. Holds per-student data. |
+| Thread | Focused AI conversation within a Task for a specific analytical activity. |
+| Workflow | Sequential automated execution of thread types within a Task. |
+| TaskMemory | Persistent structured findings accumulated across all threads in a Task. |
+| InstructionLayer | Five-level hierarchy: platform → org → user → cluster → task/thread. |
+| InstructionStudio | Platform area for authoring, versioning, and managing instructions. |
+| ActivityLibrary | Predefined thread types per module with instructions, routing rules, execution specs. |
+| AutomationExecutionSpec | Self-contained process definition for a thread type in automated workflow mode. |
+| InterventionTrigger | Condition pausing an automated workflow. Four types only. |
+
+## Modules
+1. **External Paper Review** — review papers for publishers (MVP)
+2. **Student Paper Review** — evaluate student submissions with Assignment/Submission hierarchy (MVP)
+3. **Article Self-Review** — analyze own work before submission (Phase 1)
+
+## Platform areas (not modules)
+- **Dashboard** — daily starting point, task list, cluster views, workflow status
+- **Instruction Studio** — author, version, test, and manage instructions (all five levels)
+- **Admin Panel** — org admin user management, budget, storage
+
+## Architecture principles
+- API-first — all frontend interactions via REST API
+- Every entity is an event — design for analytics from day one
+- Instruction quality is product quality — master instructions are core IP
+- No irreversible decisions in MVP
+- RAG abstraction layer — document retrieval via service interface, not direct DB queries
+- AI provider abstraction layer — routes through AWS Bedrock, never calls Anthropic SDK directly
+- Structured logging everywhere — JSON, from day one

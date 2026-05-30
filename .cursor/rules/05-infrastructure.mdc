@@ -1,0 +1,222 @@
+---
+description: AWS infrastructure via SST — patterns for defining and deploying infrastructure
+globs: ["infra/**/*.py", "sst.config.ts", "sst.config.js"]
+alwaysApply: false
+---
+
+# Infrastructure Patterns (SST + AWS)
+
+## SST is the only way to define infrastructure
+
+Never use raw AWS CDK constructs directly. Never click through the AWS console to create resources. All infrastructure is defined in the `/infra` directory as SST code, committed to the repo.
+
+## SST basics
+
+```typescript
+// sst.config.ts
+export default $config({
+  app(input) {
+    return {
+      name: "research-platform",
+      removal: input?.stage === "production" ? "retain" : "remove",
+      home: "aws",
+    };
+  },
+  async run() {
+    // Import and instantiate stacks
+    const db = await import("./infra/database");
+    const storage = await import("./infra/storage");
+    const api = await import("./infra/api");
+    const frontend = await import("./infra/frontend");
+  },
+});
+```
+
+## Secrets — always use AWS Secrets Manager
+
+```typescript
+// infra/secrets.ts
+export const anthropicApiKey = new sst.Secret("AnthropicApiKey");
+export const dbPassword = new sst.Secret("DatabasePassword");
+
+// Reference in API
+const api = new sst.aws.Function("Api", {
+  link: [anthropicApiKey, dbPassword],  // SST injects as env vars at runtime
+  ...
+});
+```
+
+## Environment variables via Parameter Store
+
+```typescript
+// For non-sensitive config
+const config = new aws.ssm.Parameter("AppConfig", {
+  name: "/research-platform/production/config",
+  type: "String",
+  value: JSON.stringify({ maxThreadsPerTask: 50, defaultWorkingLanguage: "en" }),
+});
+```
+
+## Database
+
+```typescript
+// infra/database.ts
+export const db = new sst.aws.Postgres("Database", {
+  vpc,
+  scaling: { min: "0.5 ACU", max: "4 ACU" },  // Aurora Serverless v2
+});
+
+// Enable pgvector via migration — don't try to enable via SST
+// In your first Alembic migration:
+// op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+```
+
+## SQS queues
+
+```typescript
+// infra/queues.ts
+export const documentProcessingQueue = new sst.aws.Queue("DocumentProcessing", {
+  transform: {
+    queue: {
+      visibilityTimeoutSeconds: 300,  // 5 min — enough for large document processing
+      messageRetentionSeconds: 86400, // 1 day
+    }
+  }
+});
+
+export const workflowExecutionQueue = new sst.aws.Queue("WorkflowExecution", {
+  transform: {
+    queue: {
+      visibilityTimeoutSeconds: 600,  // 10 min — workflows can be long
+    }
+  }
+});
+```
+
+## S3 storage
+
+```typescript
+// infra/storage.ts
+export const documentsBucket = new sst.aws.Bucket("Documents", {
+  transform: {
+    bucket: {
+      versioning: { status: "Enabled" },  // Always enabled — protects against accidental deletion
+    }
+  }
+});
+```
+
+## SST dev mode — local development
+
+```bash
+# Start SST dev mode — connects local code to real AWS services
+npx sst dev
+
+# This:
+# - Connects your local Next.js and Python code to real Bedrock, S3, SQS
+# - Hot-reloads on code changes
+# - No LocalStack, no mocking
+# - Requires AWS credentials configured (use AWS SSO or ~/.aws/credentials)
+```
+
+## CloudWatch alerts via SST
+
+```typescript
+// infra/monitoring.ts
+// Error rate alarm
+new aws.cloudwatch.MetricAlarm("ErrorRateAlarm", {
+  metricName: "5XXError",
+  namespace: "ResearchPlatform/API",
+  statistic: "Sum",
+  period: 300,  // 5 minutes
+  threshold: 10,
+  comparisonOperator: "GreaterThanThreshold",
+  alarmActions: [snsAlertTopic.arn],
+});
+```
+
+## Alembic database migrations
+
+All schema changes via Alembic migrations. Never modify the database directly.
+
+```bash
+# Create a new migration
+alembic revision --autogenerate -m "add workflow_execution table"
+
+# Apply migrations (runs automatically on deploy via GitHub Actions)
+alembic upgrade head
+
+# First migration must enable pgvector
+# alembic/versions/001_initial.py
+def upgrade():
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    op.create_table("tasks", ...)
+```
+
+## GitHub Actions — deploy to production
+
+```yaml
+# .github/workflows/deploy.yml
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Run migrations
+        run: poetry run alembic upgrade head
+      - name: Deploy with SST
+        run: npx sst deploy --stage production
+```
+
+## Domain and SSL
+
+```typescript
+// infra/frontend.ts
+export const frontend = new sst.aws.Nextjs("Frontend", {
+  domain: {
+    name: "app.yourplatform.com",  // Update with actual domain
+    dns: sst.aws.dns(),            // Route 53
+  },
+  // SSL via ACM is automatic with SST domain config
+});
+```
+
+## Cost management — always set budget alerts
+
+Budget alerts are defined outside SST (via AWS console or boto3 during initial setup):
+- Total monthly: warn at $50, critical at $100
+- Bedrock specifically: warn at $30
+- EC2 + RDS: warn at $20
+- Cost Anomaly Detection: enabled always
+
+## EC2 dev server
+
+The development environment runs on EC2, not your local machine. To connect:
+
+```bash
+# SSH into dev server
+ssh -i ~/.ssh/research-platform-dev.pem ubuntu@<EC2_IP>
+
+# Or configure in ~/.ssh/config
+Host research-dev
+  HostName <EC2_IP>
+  User ubuntu
+  IdentityFile ~/.ssh/research-platform-dev.pem
+
+# Then connect via Cursor: Cmd+Shift+P → "Remote-SSH: Connect to Host" → research-dev
+```
+
+The EC2 instance runs:
+- OrbStack with PostgreSQL + pgvector container
+- SST dev mode connecting to real AWS Bedrock, S3, SQS
+- All development tools (Node.js, Python, Poetry, pnpm)
+- The development environment is Linux Ubuntu 24 LTS — all paths and commands are Linux

@@ -1,0 +1,131 @@
+---
+description: Testing strategy and structured logging patterns
+globs: ["tests/**/*.py", "**/*.test.ts", "**/*.spec.ts", "**/*.test.tsx"]
+alwaysApply: false
+---
+
+# Testing & Logging
+
+## Testing strategy — pragmatic for MVP
+
+Test what matters. Don't test boilerplate.
+
+| Layer | Tool | When runs | What to test |
+|-------|------|-----------|-------------|
+| Unit | Pytest + Jest | Every branch push | Core business logic |
+| Component | React Testing Library | Every PR | Critical UI components |
+| Integration | Pytest | Every PR | Critical API endpoints |
+| E2E | Playwright | Merge to main | 5 critical scenarios only |
+
+### Critical paths that MUST have tests
+
+**Python unit tests:**
+- Instruction layer assembly — all five levels merge correctly
+- Workflow engine sequencing — threads execute in order, task memory passes forward
+- RAG retrieval — threshold logic, fallback, four-level priority
+- Structured output validation — Pydantic schemas reject invalid JSON
+- Intervention trigger detection — correct pause conditions
+- Model routing rules — correct model returned per thread type and budget state
+
+**Integration tests:**
+- `POST /api/v1/tasks` — creates task with correct module type
+- `POST /api/v1/tasks/{id}/threads` — creates thread, triggers structured Q&A
+- `POST /api/v1/documents/upload` — document queued for processing
+- `POST /api/v1/workflows/{id}/execute` — workflow starts, returns execution ID
+- `GET /api/v1/tasks/{id}/memory` — returns task memory in correct grouped structure
+
+### 5 Playwright E2E scenarios — these are the critical paths
+
+```typescript
+// tests/e2e/scenarios.spec.ts
+
+// Scenario 1: Core task/thread flow
+test("researcher creates task, uploads paper, opens thread, receives AI response", ...)
+
+// Scenario 2: Student paper review workflow
+test("professor creates assignment, adds submission, runs automated workflow, views output", ...)
+
+// Scenario 3: Hebrew language flow
+test("task created in Hebrew, AI responds in Hebrew, RTL layout correct", ...)
+
+// Scenario 4: Word export
+test("thread output exported to Word document, file downloads correctly", ...)
+
+// Scenario 5: Workflow intervention
+test("workflow pauses on intervention trigger, user responds, workflow resumes", ...)
+```
+
+## Structured logging — always use this pattern
+
+**NEVER use `print()`. NEVER use Python's default `logging` module directly.**
+
+All logging goes through the structured logger in `core/logging.py`:
+
+```python
+# core/logging.py
+import structlog
+
+logger = structlog.get_logger()
+
+# Usage — always include relevant IDs for traceability
+logger.info("event_name", key="value", another_key="value")
+```
+
+### Required log events — log ALL of these
+
+```python
+# AI calls
+logger.info("ai_call_start", thread_id=..., model_id=..., thread_type=..., instruction_version=...)
+logger.info("ai_call_complete", thread_id=..., input_tokens=..., output_tokens=..., cached_tokens=..., latency_ms=...)
+logger.warning("ai_call_failed", thread_id=..., error=..., retry_count=...)
+
+# RAG retrieval  
+logger.info("rag_retrieval", query_hash=..., chunks_retrieved=..., threshold_used=..., latency_ms=...)
+
+# Workflow execution
+logger.info("workflow_started", workflow_id=..., task_id=..., thread_count=...)
+logger.info("workflow_thread_complete", workflow_id=..., thread_type=..., memory_entries_written=...)
+logger.info("workflow_intervention", workflow_id=..., trigger_type=..., thread_type=...)
+logger.info("workflow_complete", workflow_id=..., total_threads=..., total_tokens=..., total_cost_usd=...)
+
+# Document processing
+logger.info("document_upload", document_id=..., file_type=..., size_bytes=...)
+logger.info("document_processed", document_id=..., chunks_created=..., processing_ms=...)
+logger.warning("document_processing_failed", document_id=..., error=...)
+
+# User actions
+logger.info("task_created", task_id=..., module_type=..., user_id=...)
+logger.info("thread_opened", thread_id=..., task_id=..., thread_type=...)
+logger.info("report_exported", task_id=..., format=...)
+
+# Errors — always log with context
+logger.error("unhandled_error", error=str(e), context=relevant_context)
+```
+
+### Log format — always JSON in production
+
+```python
+# core/logging.py
+import structlog
+import logging
+import sys
+
+def configure_logging():
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.JSONRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+    )
+```
+
+## What NOT to log
+- ❌ Never log paper content or document text
+- ❌ Never log student names or personal data
+- ❌ Never log API keys, tokens, or secrets
+- ❌ Never log full AI prompts (log prompt hash + length instead)
+- ❌ Never log full AI responses (log response length + structured output schema)

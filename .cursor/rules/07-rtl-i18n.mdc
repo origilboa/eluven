@@ -1,0 +1,136 @@
+---
+description: Hebrew and RTL support — critical for MVP, must be built in from day one
+globs: ["frontend/**/*.tsx", "frontend/**/*.ts", "frontend/**/*.css"]
+alwaysApply: false
+---
+
+# Hebrew & RTL Support
+
+## RTL is a first-class requirement — not an afterthought
+
+Hebrew with full RTL layout is included in the MVP. RTL support must be built into every UI component from the start. Adding RTL later is significantly more expensive than building it correctly now.
+
+## Next.js i18n configuration
+
+```typescript
+// next.config.ts
+const nextConfig = {
+  i18n: {
+    locales: ["en", "he"],
+    defaultLocale: "en",
+    localeDetection: true,
+  },
+};
+```
+
+## HTML dir attribute — set on root
+
+```typescript
+// app/layout.tsx
+export default function RootLayout({ children, params: { locale } }) {
+  const isRTL = locale === "he";
+  return (
+    <html lang={locale} dir={isRTL ? "rtl" : "ltr"}>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+## Tailwind RTL — use logical properties
+
+Always use Tailwind's logical property variants instead of directional ones:
+
+```tsx
+// ❌ Wrong — breaks in RTL
+<div className="ml-4 pl-2 text-left border-l">
+
+// ✅ Correct — works in both LTR and RTL
+<div className="ms-4 ps-2 text-start border-s">
+```
+
+| Avoid | Use instead | Meaning |
+|-------|-------------|---------|
+| `ml-*` | `ms-*` | margin-inline-start |
+| `mr-*` | `me-*` | margin-inline-end |
+| `pl-*` | `ps-*` | padding-inline-start |
+| `pr-*` | `pe-*` | padding-inline-end |
+| `left-*` | `start-*` | inset-inline-start |
+| `right-*` | `end-*` | inset-inline-end |
+| `text-left` | `text-start` | text-align start |
+| `text-right` | `text-end` | text-align end |
+| `border-l` | `border-s` | border-inline-start |
+| `rounded-l-*` | `rounded-s-*` | border-radius start |
+
+## Working language vs UI language
+
+These are separate concepts — don't conflate them:
+
+- **UI language** — language of the interface (labels, buttons, navigation) — set in user profile
+- **Working language** — language of AI responses and output — set per task, overridable per thread
+
+A user can have Hebrew UI with English working language, or vice versa.
+
+## AI always responds in working language
+
+```python
+# In context assembly — always include this directive explicitly
+working_language_directive = f"""
+You must respond in {task.working_language.value} regardless of:
+- The language of the uploaded documents
+- The language the user types their messages in
+Working language: {task.working_language.value}
+""".strip()
+```
+
+## Font support for Hebrew
+
+Use a font that supports both Latin and Hebrew scripts:
+
+```css
+/* globals.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-latin: 'Inter', sans-serif;
+  --font-hebrew: 'Heebo', sans-serif;
+}
+
+:lang(he) {
+  font-family: var(--font-hebrew);
+}
+
+:lang(en) {
+  font-family: var(--font-latin);
+}
+```
+
+## Testing RTL in Playwright
+
+The Hebrew E2E scenario must verify RTL layout explicitly:
+
+```typescript
+test("Hebrew task flow with RTL layout", async ({ page }) => {
+  // Set UI language to Hebrew
+  await page.goto("/settings");
+  await page.selectOption('[data-testid="ui-language"]', "he");
+  
+  // Verify RTL direction applied
+  const html = page.locator("html");
+  await expect(html).toHaveAttribute("dir", "rtl");
+  
+  // Verify logical property layout (sidebar should be on the right in RTL)
+  const sidebar = page.locator('[data-testid="sidebar"]');
+  const box = await sidebar.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box.x).toBeGreaterThan(viewport.width / 2); // Sidebar on right in RTL
+  
+  // Create task with Hebrew working language
+  await page.click('[data-testid="create-task"]');
+  await page.selectOption('[data-testid="working-language"]', "he");
+  
+  // Verify AI responds in Hebrew
+  // ... send message, verify response language
+});
+```

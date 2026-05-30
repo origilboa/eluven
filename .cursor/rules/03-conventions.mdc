@@ -1,0 +1,109 @@
+---
+description: Code conventions, structure, and standards — follow for all code generation
+globs: ["**/*.py", "**/*.ts", "**/*.tsx", "**/*.js"]
+alwaysApply: false
+---
+
+# Code Conventions
+
+## Repository structure
+```
+/
+├── .cursor/rules/          # These files
+├── .github/workflows/      # GitHub Actions CI/CD
+├── docs/
+│   ├── adr/                # Architecture Decision Records
+│   ├── spec/               # Concept doc, process & plan
+│   ├── data-model/         # Entity schemas, API specs
+│   ├── instructions/       # Master instruction documents
+│   ├── infrastructure/     # SST config, deployment runbooks
+│   └── testing/            # Test scenarios, Playwright scripts
+├── frontend/               # Next.js application
+│   ├── app/                # App router pages
+│   ├── components/         # React components
+│   ├── lib/                # Utilities, API client
+│   └── types/              # TypeScript types
+├── backend/                # Python FastAPI application
+│   ├── api/                # Route handlers
+│   ├── services/           # Business logic
+│   ├── models/             # SQLAlchemy models
+│   ├── schemas/            # Pydantic schemas
+│   ├── workers/            # SQS worker processes
+│   └── core/               # Config, database, logging
+├── infra/                  # SST infrastructure (Python CDK)
+├── scripts/                # Seed scripts, utilities
+│   └── seed.py             # --dev and --test modes
+└── tests/                  # Test files mirror source structure
+```
+
+## Python conventions
+- **Type hints everywhere** — all function signatures, all class attributes
+- **Pydantic for all data schemas** — request/response models, task memory entries, AI output schemas
+- **Ruff** for linting and formatting — enforced via pre-commit hook
+- **Pyright** strict mode — no `Any` without explicit justification
+- **Docstrings** on all public functions and classes — Google style
+- **Error handling** — never bare `except:`, always catch specific exceptions
+- **Logging** — structured JSON via the `logger` from `core.logging`, never `print()`
+
+```python
+# ✅ Correct
+from core.logging import get_logger
+logger = get_logger(__name__)
+
+async def process_document(document_id: UUID, task_id: UUID) -> DocumentChunk:
+    """Process a document and index into pgvector.
+    
+    Args:
+        document_id: The document to process.
+        task_id: The task this document belongs to.
+    
+    Returns:
+        The processed document chunk summary.
+    
+    Raises:
+        DocumentNotFoundError: If document_id does not exist.
+    """
+    logger.info("processing_document", document_id=str(document_id), task_id=str(task_id))
+    ...
+```
+
+## TypeScript / Next.js conventions
+- **Strict TypeScript** — no `any`, no `as unknown as X`
+- **ESLint + Prettier** — enforced via pre-commit hook
+- **Server components by default** — only use `"use client"` when needed
+- **TanStack Query** for all server state — no manual fetch in components
+- **Zustand** for client-only UI state — don't put server data here
+- **No inline styles** — Tailwind classes only
+- **Component files** — one component per file, named export + default export
+
+## Conventional Commits — always use this format
+```
+feat: add workflow execution status to dashboard
+fix: resolve pgvector similarity threshold not applying correctly
+chore: update Ruff to 0.4.0
+docs: add ADR for model routing strategy
+test: add Playwright scenario for Hebrew workflow execution
+refactor: extract RAG retrieval into service abstraction layer
+```
+
+## Naming conventions
+| Entity | Python | TypeScript |
+|--------|--------|-----------|
+| Classes | `PascalCase` | `PascalCase` |
+| Functions/methods | `snake_case` | `camelCase` |
+| Constants | `UPPER_SNAKE_CASE` | `UPPER_SNAKE_CASE` |
+| Database tables | `snake_case` plural | — |
+| API routes | `/api/v1/kebab-case` | — |
+| React components | — | `PascalCase` |
+| Files (Python) | `snake_case.py` | — |
+| Files (TS) | — | `kebab-case.tsx` |
+
+## Security rules — never violate
+- ❌ Never hardcode credentials, API keys, or secrets in code
+- ❌ Never log sensitive data (paper content, student names, personal data)
+- ❌ Never construct SQL strings manually — always use SQLAlchemy ORM
+- ❌ Never trust user input without Pydantic validation
+- ❌ Never expose internal error details to API consumers
+- ✅ Always use `AWS Secrets Manager` via boto3 for secrets
+- ✅ Always validate request bodies with Pydantic before processing
+- ✅ Always check org isolation — a user must never access another org's data

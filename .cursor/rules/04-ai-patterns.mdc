@@ -1,0 +1,219 @@
+---
+description: AI integration patterns — AWS Bedrock, model routing, RAG, context assembly, structured output
+globs: ["backend/**/*.py", "backend/services/ai/**", "backend/services/rag/**"]
+alwaysApply: false
+---
+
+# AI Integration Patterns
+
+## AWS Bedrock — the only way to call AI
+
+NEVER import or use the `anthropic` package directly. All AI calls go through boto3 + Bedrock.
+
+```python
+import boto3
+import json
+
+bedrock = boto3.client("bedrock-runtime", region_name="us-east-1")
+
+# Text-only call
+response = bedrock.invoke_model_with_response_stream(
+    modelId="anthropic.claude-3-5-sonnet-20241022-v2:0",
+    body=json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 8000,
+        "messages": [{"role": "user", "content": prompt}],
+        "system": system_prompt,
+    })
+)
+
+# Stream the response via SSE
+for event in response["body"]:
+    chunk = json.loads(event["chunk"]["bytes"])
+    if chunk["type"] == "content_block_delta":
+        yield chunk["delta"]["text"]
+```
+
+## Model IDs on Bedrock
+| Model | Bedrock model ID |
+|-------|-----------------|
+| Claude 3.5 Sonnet (default) | `anthropic.claude-3-5-sonnet-20241022-v2:0` |
+| Claude 3.5 Haiku | `anthropic.claude-3-5-haiku-20241022-v1:0` |
+| Claude 3.7 Sonnet | `anthropic.claude-3-7-sonnet-20250219-v1:0` |
+| Claude 3 Opus | `anthropic.claude-3-opus-20240229-v1:0` |
+
+## AI Provider abstraction layer
+
+All AI calls go through the `AIRouter` service — never call Bedrock directly from business logic.
+
+```python
+# services/ai/router.py
+class AIRouter:
+    def get_model(self, thread_type: ThreadType, budget_warning: bool = False) -> str:
+        """Return the Bedrock model ID for this thread type."""
+        rule = self.routing_rules.get(thread_type)
+        if budget_warning and rule.fallback_model:
+            return rule.fallback_model
+        return rule.default_model
+
+# services/ai/client.py  
+class AIClient:
+    def __init__(self, router: AIRouter):
+        self.router = router
+        self.bedrock = boto3.client("bedrock-runtime")
+    
+    async def stream(self, thread_type: ThreadType, context: AssembledContext) -> AsyncIterator[str]:
+        model_id = self.router.get_model(thread_type)
+        # ... call bedrock, stream response
+```
+
+## Context assembly order — always follow this exactly
+
+Build context in this order for every AI call:
+
+```python
+def assemble_context(thread: Thread, task: Task, message: str) -> AssembledContext:
+    return AssembledContext(
+        system_prompt="\n\n".join([
+            instruction_layer.platform,      # 1. Platform instructions (cached)
+            instruction_layer.org or "",     # 2. Org instructions (cached)
+            instruction_layer.user or "",    # 3. User instructions (cached)
+            instruction_layer.cluster or "", # 4. Cluster instructions
+            instruction_layer.task or "",    # 5. Task/thread instructions
+            f"Working language: {task.working_language.value}",  # 6. Language directive
+        ]),
+        context_blocks=[
+            task_context_block(task),        # 7. Task metadata and context
+            task_memory_block(task.memory),  # 8. Task memory (structured first, then free-form)
+            thread_documents_block(thread),  # 9. Thread-pinned documents (full text)
+            rag_chunks_block(retrieved),     # 10. RAG retrieved chunks (ranked by relevance)
+            qa_responses_block(thread),      # 11. Structured Q&A responses
+        ],
+        messages=conversation_history(thread),  # 12. Conversation history (recent first)
+        current_message=message                 # 13. Current user message
+    )
+```
+
+## Prompt caching — always cache these
+
+Platform, org, and user level instructions are identical across calls for a given user. Use Bedrock prompt caching:
+
+```python
+# Mark cacheable content with cache_control
+system_blocks = [
+    {"type": "text", "text": platform_instructions, 
+     "cache_control": {"type": "ephemeral"}},  # Cache platform instructions
+    {"type": "text", "text": org_instructions,
+     "cache_control": {"type": "ephemeral"}},  # Cache org instructions
+    {"type": "text", "text": user_instructions,
+     "cache_control": {"type": "ephemeral"}},  # Cache user instructions
+    {"type": "text", "text": task_instructions},  # Task-specific — don't cache
+]
+```
+
+## Structured output — JSON + Pydantic
+
+All task memory writes must be structured JSON validated against Pydantic schemas before DB write.
+
+```python
+# schemas/task_memory.py
+from pydantic import BaseModel
+from enum import Enum
+from typing import Literal
+
+class EntryType(str, Enum):
+    FINDING = "finding"
+    ASSUMPTION = "assumption"
+    GAP = "gap"
+    REFERENCE = "reference"
+
+class TaskMemoryEntry(BaseModel):
+    type: EntryType
+    content: str
+    confidence: float  # 0.0 to 1.0
+    source_chunk_ids: list[str]
+    thread_id: str
+    model_id: str
+    instruction_version: str
+
+# In AI service — validate before writing
+def write_task_memory(raw_json: str, thread_id: str) -> TaskMemoryEntry:
+    try:
+        data = json.loads(raw_json)
+        entry = TaskMemoryEntry(**data, thread_id=thread_id)
+        return entry
+    except (json.JSONDecodeError, ValidationError) as e:
+        logger.warning("task_memory_validation_failed", error=str(e), raw=raw_json)
+        # Retry with explicit error feedback to the model
+        raise StructuredOutputError(f"Invalid task memory entry: {e}")
+```
+
+## RAG retrieval
+
+Always go through the RAG service abstraction — never query pgvector directly from business logic.
+
+```python
+# services/rag/retriever.py
+class RAGRetriever:
+    async def retrieve(
+        self, 
+        query: str, 
+        task_id: UUID,
+        thread_id: UUID,
+        top_k: int = 10,
+        threshold: float = 0.7,
+    ) -> list[DocumentChunk]:
+        """Retrieve relevant chunks. Falls back to 0.5 threshold if < 3 results."""
+        chunks = await self._vector_search(query, task_id, top_k, threshold)
+        if len(chunks) < 3:
+            chunks = await self._vector_search(query, task_id, top_k, threshold=0.5)
+        return chunks
+    
+    async def retrieve_for_context(self, query: str, task_id: UUID, thread_id: UUID) -> list[DocumentChunk]:
+        """Retrieve following four-level priority: thread-pinned → task → cluster → global."""
+        # Always respect the four-level library hierarchy
+        ...
+```
+
+## Structured logging for AI calls — always include these fields
+
+```python
+logger.info("ai_call_complete",
+    thread_id=str(thread_id),
+    task_id=str(task_id),
+    model_id=model_id,
+    instruction_version=instruction_version,
+    thread_type=thread_type.value,
+    input_tokens=usage.input_tokens,
+    output_tokens=usage.output_tokens,
+    cached_tokens=usage.cache_read_input_tokens,
+    latency_ms=latency_ms,
+    workflow_id=str(workflow_id) if workflow_id else None,
+)
+```
+
+## SSE streaming — Next.js API route pattern
+
+```typescript
+// app/api/threads/[threadId]/stream/route.ts
+export async function POST(req: Request) {
+  const encoder = new TextEncoder();
+  
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const chunk of aiClient.stream(threadId, message)) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`));
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
+      } finally {
+        controller.close();
+      }
+    }
+  });
+  
+  return new Response(stream, {
+    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }
+  });
+}
+```
