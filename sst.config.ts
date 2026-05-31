@@ -5,7 +5,7 @@ export default $config({
     return {
       name: "eluven",
       removal: input?.stage === "production" ? "retain" : "remove",
-      protect: ["production"],
+      protect: input?.stage === "production",
       home: "aws",
     };
   },
