@@ -13,7 +13,9 @@ if config.config_file_name is not None:
 # Override sqlalchemy.url with environment variable
 config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 
-target_metadata = None
+from models import Base  # noqa: E402
+
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
