@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     thread_document_full_text_token_threshold: int = 4000
     embed_batch_size: int = 10
     s3_presigned_url_expiry_seconds: int = 3600
+    document_processing_queue_url: str = ""
 
     # Auth
     nextauth_secret: str

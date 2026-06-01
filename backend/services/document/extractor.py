@@ -15,10 +15,9 @@ from unstructured.partition.text import partition_text
 from unstructured.partition.xlsx import partition_xlsx
 
 from core.logging import get_logger
+from services.document.constants import SUPPORTED_FILE_TYPES
 
 logger = get_logger(__name__)
-
-SUPPORTED_FILE_TYPES = frozenset({"pdf", "docx", "doc", "txt", "xlsx", "csv", "tex"})
 
 
 @dataclass
