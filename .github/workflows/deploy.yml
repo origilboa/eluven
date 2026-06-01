@@ -11,6 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: sudo apt-get install -y libgl1
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

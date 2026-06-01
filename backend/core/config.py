@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     # AWS
     aws_region: str = "us-east-1"
     s3_documents_bucket: str
+    bedrock_embed_model_id: str = "amazon.titan-embed-text-v1"
+    document_chunk_size_tokens: int = 512
+    document_chunk_overlap_tokens: int = 50
+    thread_document_full_text_token_threshold: int = 4000
+    embed_batch_size: int = 10
+    s3_presigned_url_expiry_seconds: int = 3600
 
     # Auth
     nextauth_secret: str
