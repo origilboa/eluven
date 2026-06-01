@@ -60,7 +60,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push(`/${locale}`);
+    router.push(`/${locale}/dashboard`);
     router.refresh();
   }
 

@@ -34,6 +34,14 @@ export type TaskResponse = {
   updated_at: string;
 };
 
+export type CreateTaskRequest = {
+  title: string;
+  module_type: string;
+  cluster_id?: string | null;
+  working_language?: string | null;
+  context?: Record<string, unknown> | null;
+};
+
 export type TaskMemoryEntryResponse = {
   id: string;
   entry_type: string;
