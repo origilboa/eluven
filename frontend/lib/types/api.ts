@@ -70,6 +70,68 @@ export type ClusterResponse = {
   created_at: string;
 };
 
+export type CreateThreadRequest = {
+  thread_type: string;
+  title?: string | null;
+  working_language?: string | null;
+};
+
+export type ActivityLibraryEntryResponse = {
+  id: string;
+  thread_type: string;
+  module_type: string;
+  display_name: string;
+  description: string | null;
+  scope: string;
+  default_model_id: string;
+  token_budget: number | null;
+  supports_automation: boolean;
+};
+
+export type SubmitQARequest = {
+  responses: QAResponseRequest[];
+};
+
+export type QAResponseRequest = {
+  question_id: string;
+  response_text?: string | null;
+  response_options?: string[] | null;
+};
+
+export type StreamStatusEvent = {
+  type: "status";
+  message: string;
+};
+
+export type StreamTextEvent = {
+  type: "text";
+  text: string;
+};
+
+export type StreamMemoryEntryEvent = {
+  type: "memory_entry";
+  entry: TaskMemoryEntryResponse;
+};
+
+export type StreamDoneEvent = {
+  type: "done";
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens?: number;
+};
+
+export type StreamErrorEvent = {
+  type: "error";
+  message: string;
+};
+
+export type StreamEvent =
+  | StreamStatusEvent
+  | StreamTextEvent
+  | StreamMemoryEntryEvent
+  | StreamDoneEvent
+  | StreamErrorEvent;
+
 export type ThreadResponse = {
   id: string;
   task_id: string;
