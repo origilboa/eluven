@@ -1,0 +1,44 @@
+"""Instruction API schemas (data model Section 10.7)."""
+
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+
+class InstructionVersionResponse(BaseModel):
+    """Single instruction version with active flag."""
+
+    id: UUID
+    version_number: int
+    content: str
+    change_note: str | None
+    created_by: UUID
+    created_at: datetime
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class InstructionSetResponse(BaseModel):
+    """Instruction set with active version and version history."""
+
+    id: UUID
+    level: str
+    active_version: InstructionVersionResponse | None
+    versions: list[InstructionVersionResponse]
+
+    model_config = {"from_attributes": True}
+
+
+class CreateInstructionVersionRequest(BaseModel):
+    """Request body for creating a new instruction version."""
+
+    content: str = Field(min_length=1)
+    change_note: str | None = Field(default=None, max_length=500)
+
+
+class ActivateInstructionVersionRequest(BaseModel):
+    """Request body for promoting a version to active."""
+
+    version_id: UUID

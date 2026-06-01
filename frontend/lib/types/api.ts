@@ -229,3 +229,74 @@ export type WorkflowExecutionResponse = {
 export type ApiErrorBody = {
   detail?: string | { msg: string }[];
 };
+
+export type KBAttachmentResponse = {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  entity_name: string;
+  attached_at: string;
+};
+
+export type KBCollectionResponse = {
+  id: string;
+  name: string;
+  description: string | null;
+  document_count: number;
+  attachments: KBAttachmentResponse[];
+  created_at: string;
+};
+
+export type CreateCollectionRequest = {
+  name: string;
+  description?: string | null;
+};
+
+export type UpdateCollectionRequest = {
+  name: string;
+  description?: string | null;
+};
+
+export type AttachCollectionRequest = {
+  entity_type: "task" | "cluster";
+  entity_id: string;
+};
+
+export type KBDocumentResponse = {
+  id: string;
+  filename: string;
+  file_type: string;
+  size_bytes: number;
+  status: string;
+  chunk_count: number;
+  version: number;
+  created_at: string;
+};
+
+export type InstructionVersionResponse = {
+  id: string;
+  version_number: number;
+  content: string;
+  change_note: string | null;
+  created_by: string;
+  created_at: string;
+  is_active: boolean;
+};
+
+export type InstructionSetResponse = {
+  id: string;
+  level: string;
+  active_version: InstructionVersionResponse | null;
+  versions: InstructionVersionResponse[];
+};
+
+export type CreateInstructionVersionRequest = {
+  content: string;
+  change_note?: string | null;
+};
+
+export type ActivateInstructionVersionRequest = {
+  version_id: string;
+};
+
+export type InstructionLevel = "platform" | "org" | "user";

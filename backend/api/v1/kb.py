@@ -223,10 +223,7 @@ async def list_collections(
         .order_by(KBCollection.created_at.desc()),
     )
     collections = result.scalars().all()
-    responses = [
-        await _collection_response(db, collection, include_attachments=False)
-        for collection in collections
-    ]
+    responses = [await _collection_response(db, collection) for collection in collections]
     logger.info("kb_collections_listed", user_id=str(current_user.id), count=len(responses))
     return responses
 
@@ -305,6 +302,30 @@ async def delete_collection(
     await db.delete(collection)
     logger.info("kb_collection_deleted", collection_id=str(collection_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/collections/{collection_id}/documents",
+    response_model=list[KBDocumentResponse],
+)
+async def list_documents(
+    collection_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[KBDocumentResponse]:
+    """List documents in a KB collection."""
+    await _get_owned_collection(db, collection_id, current_user)
+
+    result = await db.execute(
+        select(KBDocument)
+        .where(
+            KBDocument.collection_id == collection_id,
+            KBDocument.is_deleted.is_(False),
+        )
+        .order_by(KBDocument.created_at.desc()),
+    )
+    documents = result.scalars().all()
+    return [_document_response(document) for document in documents]
 
 
 @router.post(

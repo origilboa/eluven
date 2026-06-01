@@ -72,16 +72,26 @@ async function request<T>(
     body?: unknown;
     headers?: HeadersInit;
     accessToken?: string;
+    skipJsonContentType?: boolean;
   } = {},
 ): Promise<T> {
-  const { body, headers: initHeaders, accessToken } = options;
+  const { body, headers: initHeaders, accessToken, skipJsonContentType } = options;
   const token = await resolveAccessToken(accessToken);
   const headers = await buildHeaders(initHeaders, token);
+
+  if (skipJsonContentType) {
+    headers.delete("Content-Type");
+  }
 
   const response = await fetch(resolveApiUrl(path), {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body:
+      body === undefined
+        ? undefined
+        : body instanceof FormData
+          ? body
+          : JSON.stringify(body),
     credentials: "include",
   });
 
@@ -134,5 +144,19 @@ export const api = {
 
   delete<T>(path: string, options?: { headers?: HeadersInit; accessToken?: string }) {
     return request<T>("DELETE", path, options);
+  },
+
+  upload<T>(
+    path: string,
+    file: File,
+    options?: { headers?: HeadersInit; accessToken?: string },
+  ) {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request<T>("POST", path, {
+      ...options,
+      body: formData,
+      skipJsonContentType: true,
+    });
   },
 };
