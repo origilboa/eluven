@@ -1,6 +1,6 @@
 """Authentication endpoints (data model Section 10.1)."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -83,7 +83,7 @@ async def login(
             detail="Inactive user",
         )
 
-    user.last_login_at = datetime.now(UTC)
+    user.last_login_at = datetime.utcnow()
     await db.flush()
 
     access_token = create_token(user_id=user.id, org_id=user.org_id, token_type="access")
