@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     embed_batch_size: int = 10
     s3_presigned_url_expiry_seconds: int = 3600
     document_processing_queue_url: str = ""
+    workflow_execution_queue_url: str = ""
+    workflow_max_retries: int = 3
+    workflow_confidence_threshold: float = 0.6
 
     # Auth
     nextauth_secret: str

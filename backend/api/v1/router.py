@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from api.v1 import auth, clusters, kb, tasks, threads
+from api.v1 import auth, clusters, kb, tasks, threads, workflows
 
 router = APIRouter(prefix="/api/v1")
 
@@ -11,3 +11,4 @@ router.include_router(kb.router)
 router.include_router(clusters.router)
 router.include_router(tasks.router)
 router.include_router(threads.router)
+router.include_router(workflows.router)
