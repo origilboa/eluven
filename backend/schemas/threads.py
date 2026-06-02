@@ -82,6 +82,22 @@ class ThreadDocumentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TaskThreadDocumentResponse(ThreadDocumentResponse):
+    """Thread document with parent thread metadata for task-level listings."""
+
+    thread_id: UUID
+    thread_title: str
+    thread_type: str
+
+
+class DocumentDownloadUrlResponse(BaseModel):
+    """Presigned URL for downloading a stored document."""
+
+    url: str
+    filename: str
+    expires_in_seconds: int
+
+
 class QAQuestionResponse(BaseModel):
     """Q&A question from ActivityLibrary with optional existing response."""
 

@@ -14,10 +14,12 @@ from api.access import get_owned_task
 from api.deps import get_current_active_user, get_db
 from core.logging import get_logger
 from models.cluster import Cluster
+from models.kb import KBCollection, KBCollectionAttachment, KBDocument, ThreadDocument
 from models.memory import TaskMemoryEntry, TaskMemoryEntryType
 from models.task import Task, TaskStatus
 from models.thread import Thread
 from models.user import User
+from schemas.kb import TaskReferenceCollectionResponse
 from schemas.tasks import (
     CreateTaskRequest,
     TaskMemoryEntryResponse,
@@ -25,6 +27,7 @@ from schemas.tasks import (
     TaskResponse,
     UpdateTaskRequest,
 )
+from schemas.threads import TaskThreadDocumentResponse
 
 from services.export.word_exporter import build_task_word_export
 
@@ -290,3 +293,106 @@ async def export_task_word(
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+async def _collection_document_count(session: AsyncSession, collection_id: UUID) -> int:
+    count = await session.scalar(
+        select(func.count())
+        .select_from(KBDocument)
+        .where(
+            KBDocument.collection_id == collection_id,
+            KBDocument.is_deleted.is_(False),
+        ),
+    )
+    return int(count or 0)
+
+
+@router.get("/{task_id}/documents", response_model=list[TaskThreadDocumentResponse])
+async def list_task_documents(
+    task_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[TaskThreadDocumentResponse]:
+    """List manuscript/submission documents across all threads in a task."""
+    await get_owned_task(db, task_id, current_user)
+    result = await db.execute(
+        select(ThreadDocument, Thread)
+        .join(Thread, ThreadDocument.thread_id == Thread.id)
+        .where(
+            Thread.task_id == task_id,
+            Thread.org_id == current_user.org_id,
+        )
+        .order_by(ThreadDocument.created_at.desc()),
+    )
+    rows = list(result.all())
+    logger.info("task_documents_listed", task_id=str(task_id), count=len(rows))
+    return [
+        TaskThreadDocumentResponse(
+            id=document.id,
+            filename=document.filename,
+            file_type=document.file_type,
+            size_bytes=document.size_bytes,
+            status=document.status.value,
+            load_strategy=document.load_strategy.value,
+            token_count=document.token_count,
+            created_at=document.created_at,
+            thread_id=thread.id,
+            thread_title=thread.title,
+            thread_type=thread.thread_type,
+        )
+        for document, thread in rows
+    ]
+
+
+@router.get(
+    "/{task_id}/reference-collections",
+    response_model=list[TaskReferenceCollectionResponse],
+)
+async def list_task_reference_collections(
+    task_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[TaskReferenceCollectionResponse]:
+    """List KB collections attached to this task or its cluster (reference material)."""
+    task = await get_owned_task(db, task_id, current_user)
+
+    entity_filters: list[tuple[str, UUID]] = [("task", task.id)]
+    if task.cluster_id is not None:
+        entity_filters.append(("cluster", task.cluster_id))
+
+    seen: set[UUID] = set()
+    responses: list[TaskReferenceCollectionResponse] = []
+
+    for entity_type, entity_id in entity_filters:
+        attachment_result = await db.execute(
+            select(KBCollectionAttachment, KBCollection)
+            .join(KBCollection, KBCollectionAttachment.collection_id == KBCollection.id)
+            .where(
+                KBCollectionAttachment.entity_type == entity_type,
+                KBCollectionAttachment.entity_id == entity_id,
+                KBCollection.org_id == current_user.org_id,
+            )
+            .order_by(KBCollection.name.asc()),
+        )
+        for _attachment, collection in attachment_result.all():
+            if collection.id in seen:
+                continue
+            seen.add(collection.id)
+            doc_count = await _collection_document_count(db, collection.id)
+            responses.append(
+                TaskReferenceCollectionResponse(
+                    id=collection.id,
+                    name=collection.name,
+                    description=collection.description,
+                    document_count=doc_count,
+                    attached_via="task" if entity_type == "task" else "cluster",
+                    created_at=collection.created_at,
+                ),
+            )
+
+    logger.info(
+        "task_reference_collections_listed",
+        task_id=str(task_id),
+        count=len(responses),
+    )
+    return responses

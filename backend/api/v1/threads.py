@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.access import get_owned_task, get_owned_thread
 from api.deps import get_current_active_user, get_db
+from core.config import settings
 from core.database import AsyncSessionLocal
 from core.logging import get_logger
 from models.activity import ActivityLibraryEntry, ThreadQAQuestion, ThreadQAResponse
@@ -29,6 +30,7 @@ from schemas.threads import (
     SendMessageRequest,
     StreamRequest,
     SubmitQARequest,
+    DocumentDownloadUrlResponse,
     ThreadDocumentResponse,
     ThreadResponse,
     UpdateThreadRequest,
@@ -86,6 +88,20 @@ def _thread_document_response(document: ThreadDocument) -> ThreadDocumentRespons
         token_count=document.token_count,
         created_at=document.created_at,
     )
+
+
+async def _get_owned_thread_document(
+    session: AsyncSession,
+    *,
+    thread_id: UUID,
+    document_id: UUID,
+    user: User,
+) -> tuple[Thread, ThreadDocument]:
+    thread = await get_owned_thread(session, thread_id, user)
+    document = await session.get(ThreadDocument, document_id)
+    if document is None or document.thread_id != thread.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return thread, document
 
 
 def _file_type_from_filename(filename: str) -> str:
@@ -444,6 +460,63 @@ async def upload_thread_document(
 
     enqueue_document_processing(document_id, "thread")
     return _thread_document_response(document)
+
+
+@router.get(
+    "/threads/{thread_id}/documents",
+    response_model=list[ThreadDocumentResponse],
+)
+async def list_thread_documents(
+    thread_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[ThreadDocumentResponse]:
+    """List documents attached to a thread (manuscript / submission files)."""
+    await get_owned_thread(db, thread_id, current_user)
+    result = await db.execute(
+        select(ThreadDocument)
+        .where(ThreadDocument.thread_id == thread_id)
+        .order_by(ThreadDocument.created_at.desc()),
+    )
+    documents = list(result.scalars().all())
+    logger.info(
+        "thread_documents_listed",
+        thread_id=str(thread_id),
+        count=len(documents),
+    )
+    return [_thread_document_response(document) for document in documents]
+
+
+@router.get(
+    "/threads/{thread_id}/documents/{document_id}/download-url",
+    response_model=DocumentDownloadUrlResponse,
+)
+async def get_thread_document_download_url(
+    thread_id: UUID,
+    document_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> DocumentDownloadUrlResponse:
+    """Return a presigned URL to download a thread document."""
+    _thread, document = await _get_owned_thread_document(
+        db,
+        thread_id=thread_id,
+        document_id=document_id,
+        user=current_user,
+    )
+    storage = StorageService()
+    url = storage.generate_presigned_url(document.s3_key)
+    expires_in = settings.s3_presigned_url_expiry_seconds
+    logger.info(
+        "thread_document_download_url_issued",
+        thread_id=str(thread_id),
+        document_id=str(document_id),
+    )
+    return DocumentDownloadUrlResponse(
+        url=url,
+        filename=document.filename,
+        expires_in_seconds=expires_in,
+    )
 
 
 @router.get("/threads/{thread_id}/qa", response_model=list[QAQuestionResponse])

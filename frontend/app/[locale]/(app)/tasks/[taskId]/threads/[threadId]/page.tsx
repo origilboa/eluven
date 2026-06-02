@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ChatInterface } from "@/components/threads/chat-interface";
+import { ThreadDocumentsPanel } from "@/components/documents/thread-documents-panel";
 import { ThreadInfoPanel } from "@/components/threads/thread-info-panel";
 import { api, ApiError } from "@/lib/api";
 import { requireAuthSession } from "@/lib/auth-session";
@@ -69,7 +70,10 @@ export default async function ThreadDetailPage({ params }: ThreadDetailPageProps
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <ChatInterface locale={locale} threadId={threadId} initialMessages={messages} />
-        <ThreadInfoPanel locale={locale} thread={thread} activityEntries={activityEntries} />
+        <div className="space-y-6">
+          <ThreadDocumentsPanel locale={locale} threadId={threadId} />
+          <ThreadInfoPanel locale={locale} thread={thread} activityEntries={activityEntries} />
+        </div>
       </div>
     </div>
   );

@@ -66,3 +66,14 @@ class KBCollectionResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TaskReferenceCollectionResponse(BaseModel):
+    """KB collection linked to a task directly or via its cluster."""
+
+    id: UUID
+    name: str
+    description: str | None
+    document_count: int
+    attached_via: Literal["task", "cluster"]
+    created_at: datetime

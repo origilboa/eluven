@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { TaskDetailToolbar } from "@/components/tasks/task-detail-toolbar";
+import { TaskDocumentsPanel } from "@/components/documents/task-documents-panel";
 import { TaskInstructionPanel } from "@/components/instructions/task-instruction-panel";
 import { TaskMemoryPanel } from "@/components/tasks/task-memory-panel";
 import { ThreadList } from "@/components/threads/thread-list";
@@ -138,6 +139,8 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <section className="space-y-6">
+          <TaskDocumentsPanel locale={locale} taskId={taskId} threads={threads} />
+
           <h2 className="text-start text-lg font-semibold text-zinc-900 dark:text-zinc-50">
             {copy.threads}
           </h2>

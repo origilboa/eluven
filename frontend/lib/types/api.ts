@@ -175,6 +175,27 @@ export type ThreadDocumentResponse = {
   created_at: string;
 };
 
+export type TaskThreadDocumentResponse = ThreadDocumentResponse & {
+  thread_id: string;
+  thread_title: string;
+  thread_type: string;
+};
+
+export type DocumentDownloadUrlResponse = {
+  url: string;
+  filename: string;
+  expires_in_seconds: number;
+};
+
+export type TaskReferenceCollectionResponse = {
+  id: string;
+  name: string;
+  description: string | null;
+  document_count: number;
+  attached_via: "task" | "cluster";
+  created_at: string;
+};
+
 export type QAQuestionResponse = {
   id: string;
   question_text: string;
