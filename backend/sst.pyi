@@ -7,16 +7,17 @@ class Resource:
     class AnthropicApiKey:
         type: str
         value: str
+    class Api:
+        service: str
+        type: str
     class App:
         name: str
         stage: str
     class Database:
-        clusterArn: str
         database: str
         host: str
         password: str
         port: float
-        secretArn: str
         type: str
         username: str
     class DatabasePassword:
@@ -28,6 +29,11 @@ class Resource:
     class Documents:
         name: str
         type: str
+    class EluvenVpc:
+        type: str
+    class Frontend:
+        type: str
+        url: str
     class NextAuthSecret:
         type: str
         value: str

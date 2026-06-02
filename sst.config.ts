@@ -1,5 +1,4 @@
 /// <reference path="./.sst/platform/config.d.ts" />
-
 export default $config({
   app(input) {
     return {
@@ -14,9 +13,9 @@ export default $config({
     const storage = await import("./infra/storage");
     const queues = await import("./infra/queues");
     const database = await import("./infra/database");
+    await import("./infra/vpc-endpoints");
     const api = await import("./infra/api");
     const frontend = await import("./infra/frontend");
-
     return {
       apiService: api.api.service,
       frontendUrl: frontend.frontend.url,

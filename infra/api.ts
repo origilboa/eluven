@@ -3,8 +3,19 @@ import { documentProcessingQueue, workflowExecutionQueue } from "./queues";
 import { anthropicApiKey, dbPassword, nextAuthSecret } from "./secrets";
 import { documentsBucket } from "./storage";
 
+export const cluster = new sst.aws.Cluster("EluvenCluster", {
+  vpc: {
+    id: vpc.id,
+    securityGroups: vpc.securityGroups,
+    containerSubnets: vpc.privateSubnets,
+    loadBalancerSubnets: vpc.publicSubnets,
+    cloudmapNamespaceId: vpc.nodes.cloudmapNamespace.id,
+    cloudmapNamespaceName: vpc.nodes.cloudmapNamespace.name,
+  },
+});
+
 export const api = new sst.aws.Service("Api", {
-  vpc,
+  cluster,
   link: [
     db,
     documentsBucket,
@@ -18,7 +29,9 @@ export const api = new sst.aws.Service("Api", {
     context: "./backend",
     dockerfile: "Dockerfile",
   },
-  port: 8000,
+  serviceRegistry: {
+    port: 8000,
+  },
   scaling: {
     min: 1,
     max: 2,
@@ -35,7 +48,7 @@ export const api = new sst.aws.Service("Api", {
     S3_DOCUMENTS_BUCKET: documentsBucket.name,
     DOCUMENT_PROCESSING_QUEUE_URL: documentProcessingQueue.url,
     WORKFLOW_EXECUTION_QUEUE_URL: workflowExecutionQueue.url,
-    AWS_REGION: "us-east-1",
+    AWS_REGION: aws.getRegionOutput().name,
     ENVIRONMENT: $app.stage,
     LOG_LEVEL: "INFO",
   },

@@ -109,7 +109,12 @@ class DocumentExtractor:
     ) -> list[Any]:
         """Route to the appropriate Unstructured partitioner."""
         if file_type == "pdf":
-            return partition_pdf(file=buffer, file_filename=filename)
+            return partition_pdf(
+                file=buffer,
+                file_filename=filename,
+                strategy="fast",
+                hi_res=False,
+            )
         if file_type == "docx":
             return partition_docx(file=buffer, file_filename=filename)
         if file_type == "doc":

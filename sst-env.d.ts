@@ -10,13 +10,15 @@ declare module "sst" {
       "type": "sst.sst.Secret"
       "value": string
     }
+    "Api": {
+      "service": string
+      "type": "sst.aws.Service"
+    }
     "Database": {
-      "clusterArn": string
       "database": string
       "host": string
       "password": string
       "port": number
-      "secretArn": string
       "type": "sst.aws.Postgres"
       "username": string
     }
@@ -31,6 +33,13 @@ declare module "sst" {
     "Documents": {
       "name": string
       "type": "sst.aws.Bucket"
+    }
+    "EluvenVpc": {
+      "type": "sst.aws.Vpc"
+    }
+    "Frontend": {
+      "type": "sst.aws.Nextjs"
+      "url": string
     }
     "NextAuthSecret": {
       "type": "sst.sst.Secret"
