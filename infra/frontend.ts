@@ -15,6 +15,12 @@ export const frontend = new sst.aws.Nextjs("Frontend", {
   server: {
     timeout: "60 seconds",
   },
+  domain: {
+    name: "app.eluven.ai",
+    dns: sst.aws.dns({
+      zone: "Z06614832D7DMEV9IQTMN",
+    }),
+  },
   dev: {
     command: "pnpm run dev",
     directory: "frontend",
