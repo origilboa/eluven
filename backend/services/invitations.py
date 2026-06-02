@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from core.config import settings
 
@@ -23,14 +23,14 @@ def hash_invite_token(token: str) -> str:
 
 
 def invitation_expires_at() -> datetime:
-    """Compute default invitation expiry timestamp."""
-    return datetime.now(UTC) + timedelta(days=settings.invitation_expire_days)
+    """Compute default invitation expiry timestamp (naive UTC for DB compatibility)."""
+    return datetime.utcnow() + timedelta(days=settings.invitation_expire_days)
 
 
 def is_invitation_expired(expires_at: datetime) -> bool:
     """Return True if the invitation expiry is in the past."""
-    now = datetime.now(UTC)
-    expiry = expires_at if expires_at.tzinfo is not None else expires_at.replace(tzinfo=UTC)
+    now = datetime.utcnow()
+    expiry = expires_at.replace(tzinfo=None) if expires_at.tzinfo is not None else expires_at
     return expiry <= now
 
 

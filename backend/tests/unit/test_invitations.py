@@ -9,7 +9,7 @@ from services.invitations import (
     normalize_invite_token,
     slugify_org_name,
 )
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 
 def test_generate_and_hash_token() -> None:
@@ -24,8 +24,8 @@ def test_normalize_invite_token_rejects_invalid() -> None:
 
 
 def test_is_invitation_expired() -> None:
-    past = datetime.now(UTC) - timedelta(days=1)
-    future = datetime.now(UTC) + timedelta(days=1)
+    past = datetime.utcnow() - timedelta(days=1)
+    future = datetime.utcnow() + timedelta(days=1)
     assert is_invitation_expired(past) is True
     assert is_invitation_expired(future) is False
 

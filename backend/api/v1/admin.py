@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -443,7 +443,7 @@ async def revoke_invitation(
     if invitation.revoked_at is not None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    invitation.revoked_at = datetime.now(UTC)
+    invitation.revoked_at = datetime.utcnow()
     await db.flush()
     logger.info(
         "admin_invitation_revoked",

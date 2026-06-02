@@ -271,7 +271,7 @@ async def accept_invite(
         default_working_language="en",
     )
     db.add(user)
-    invitation.accepted_at = datetime.now(UTC)
+    invitation.accepted_at = datetime.utcnow()
     await db.flush()
 
     access_token = create_token(user_id=user.id, org_id=user.org_id, token_type="access")
