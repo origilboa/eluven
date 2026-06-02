@@ -343,6 +343,8 @@ def _run_alembic_migrations(*args: str) -> None:
 async def _reset_demo_async() -> None:
     """Wipe app data, re-apply migration seeds, load full demo dataset."""
     _logger().info("reset_demo_starting")
+    await _clear_async()
+    _logger().info("reset_demo_database_truncated")
     _run_alembic_migrations("downgrade", "001")
     _logger().info("reset_demo_database_wiped")
     _run_alembic_migrations("upgrade", "head")
