@@ -66,6 +66,9 @@ RUN pip install --no-cache-dir "unstructured==${UNSTRUCTURED_VERSION}" --no-deps
       "unstructured-client" \
       "wrapt"
 
+RUN mkdir -p /usr/local/nltk_data && \
+    NLTK_DATA=/usr/local/nltk_data python -m nltk.downloader averaged_perceptron_tagger_eng punkt_tab
+
 COPY . .
 
 FROM python:3.12-slim AS runtime
@@ -83,12 +86,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    NLTK_DATA=/usr/local/nltk_data
 
 WORKDIR /app
 
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /usr/local/nltk_data /usr/local/nltk_data
 COPY --from=builder /app /app
 
 EXPOSE 8000
