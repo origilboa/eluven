@@ -1,8 +1,7 @@
-"""Rich demo dataset for manual MVP testing — two users, tasks, threads, KB, workflows."""
+"""Rich demo dataset for manual MVP testing — three roles, tasks, threads, KB, workflows."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -10,14 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logging import get_logger
 from core.security import hash_password
+from models.activity import ActivityLibraryEntry, QAStage, ThreadQAQuestion, ThreadQAResponse
 from models.cluster import Cluster
-from models.kb import (
-    KBCollection,
-    KBCollectionAttachment,
-    KBDocument,
-    KBDocumentStatus,
-    DocumentChunk,
-)
+from models.invitation import UserInvitation
+from models.kb import KBCollection, KBCollectionAttachment
 from models.memory import TaskMemoryEntry, TaskMemoryEntryType
 from models.org import Org
 from models.task import Task, TaskStatus
@@ -33,19 +28,33 @@ from models.workflow import (
     WorkflowThreadStatus,
 )
 from seed.constants import (
+    DEMO_INVITATION_TOKEN,
+    DEMO_INVITEE_EMAIL,
+    DEMO_INVITEE_NAME,
+    DEMO_ORG_B_NAME,
+    DEMO_ORG_B_SLUG,
     DEV_ORG_NAME,
     DEV_ORG_SLUG,
     DEV_USER_EMAIL,
     DEV_USER_NAME,
     DEV_USER_PASSWORD,
-    EMBEDDING_DIMENSION,
     MVP_MODULE_EPR,
     MVP_MODULE_SPR,
+    ORG_ADMIN_USER_EMAIL,
+    ORG_ADMIN_USER_NAME,
+    ORG_ADMIN_USER_PASSWORD,
     REVIEWER_USER_EMAIL,
     REVIEWER_USER_NAME,
     REVIEWER_USER_PASSWORD,
     TEMPLATE_EPR_FULL_ID,
+    TEMPLATE_SPR_FULL_ID,
 )
+from seed.documents import (
+    purge_dev_org_s3_prefix,
+    seed_kb_document_processed,
+    seed_task_document,
+)
+from services.invitations import hash_invite_token, invitation_expires_at
 
 logger = get_logger(__name__)
 
@@ -53,8 +62,12 @@ _DEMO_MARKER = "Demo "
 
 
 async def seed_demo_async(session: AsyncSession) -> None:
-    """Seed idempotent demo data for two users with varied tasks and flows."""
-    org = await _get_or_create_org(session)
+    """Seed idempotent demo data for three roles with varied tasks and flows."""
+    org = await _get_or_create_org(session, name=DEV_ORG_NAME, slug=DEV_ORG_SLUG)
+    purge_dev_org_s3_prefix(org.id)
+
+    await _get_or_create_org(session, name=DEMO_ORG_B_NAME, slug=DEMO_ORG_B_SLUG)
+
     dev_user = await _get_or_create_user(
         session,
         org=org,
@@ -62,6 +75,14 @@ async def seed_demo_async(session: AsyncSession) -> None:
         name=DEV_USER_NAME,
         role=UserRole.APP_ADMIN,
         password=DEV_USER_PASSWORD,
+    )
+    org_admin = await _get_or_create_user(
+        session,
+        org=org,
+        email=ORG_ADMIN_USER_EMAIL,
+        name=ORG_ADMIN_USER_NAME,
+        role=UserRole.ORG_ADMIN,
+        password=ORG_ADMIN_USER_PASSWORD,
     )
     reviewer = await _get_or_create_user(
         session,
@@ -154,10 +175,75 @@ async def seed_demo_async(session: AsyncSession) -> None:
         description="Draft submission — not yet reviewed.",
     )
 
+    spr_workflow = await _get_or_create_task(
+        session,
+        org=org,
+        owner=dev_user,
+        title=f"{_DEMO_MARKER}SPR — Workflow paused (intervention)",
+        module_type=MVP_MODULE_SPR,
+        status=TaskStatus.ACTIVE,
+        cluster_id=assignment.id,
+        description="SPR workflow paused on an intervention trigger for UI testing.",
+    )
+
     await _seed_epr_threads_and_memory(session, org=org, owner=dev_user, task=epr_active)
+    initial_read = await session.execute(
+        select(Thread).where(
+            Thread.task_id == epr_active.id,
+            Thread.thread_type == "initial_read",
+        ),
+    )
+    initial_read_thread = initial_read.scalar_one_or_none()
+    if initial_read_thread is not None:
+        await _seed_opening_qa_responses(session, thread=initial_read_thread)
+
     await _seed_spr_thread(session, org=org, owner=dev_user, task=spr_alice)
-    await _seed_kb_collection(session, org=org, owner=dev_user, task=epr_active)
-    await _seed_paused_workflow(session, org=org, owner=dev_user, task=epr_workflow)
+    kb_collection = await _seed_kb_collection(
+        session,
+        org=org,
+        owner=dev_user,
+        task=epr_active,
+        cluster=assignment,
+    )
+    await seed_task_document(
+        session,
+        org=org,
+        task=epr_active,
+        owner=dev_user,
+        filename="demo-manuscript.pdf",
+        fixture_name="sample.pdf",
+    )
+    await seed_task_document(
+        session,
+        org=org,
+        task=spr_alice,
+        owner=dev_user,
+        filename="demo-submission.pdf",
+        fixture_name="sample.pdf",
+    )
+    await _seed_paused_workflow(
+        session,
+        org=org,
+        owner=dev_user,
+        task=epr_workflow,
+        template_id=UUID(TEMPLATE_EPR_FULL_ID),
+        intervention_question=(
+            "The paper describes two competing operational definitions of 'engagement'. "
+            "Which definition should be used for the methodology assessment?"
+        ),
+    )
+    await _seed_paused_workflow(
+        session,
+        org=org,
+        owner=dev_user,
+        task=spr_workflow,
+        template_id=UUID(TEMPLATE_SPR_FULL_ID),
+        intervention_question=(
+            "The rubric scores 'literature review' on sources from 2015–2020, but the essay "
+            "mostly cites 2022–2024 papers. Which criterion should govern this section?"
+        ),
+    )
+    await _seed_pending_invitation(session, org=org, invited_by=org_admin)
 
     from seed.instructions import seed_sample_instructions_for_session
 
@@ -169,25 +255,33 @@ async def seed_demo_async(session: AsyncSession) -> None:
         "seed_demo_complete",
         org_slug=DEV_ORG_SLUG,
         dev_user=DEV_USER_EMAIL,
+        org_admin_user=ORG_ADMIN_USER_EMAIL,
         reviewer_user=REVIEWER_USER_EMAIL,
-        task_count=7,
+        task_count=8,
         cluster_id=str(assignment.id),
         epr_draft_id=str(epr_draft.id),
         epr_active_id=str(epr_active.id),
+        kb_collection_id=str(kb_collection.id) if kb_collection else None,
+        demo_invitation_token=DEMO_INVITATION_TOKEN,
         instructions_seeded=instructions_seeded,
     )
 
 
-async def _get_or_create_org(session: AsyncSession) -> Org:
-    result = await session.execute(select(Org).where(Org.slug == DEV_ORG_SLUG))
+async def _get_or_create_org(
+    session: AsyncSession,
+    *,
+    name: str,
+    slug: str,
+) -> Org:
+    result = await session.execute(select(Org).where(Org.slug == slug))
     org = result.scalar_one_or_none()
     if org is not None:
         return org
 
-    org = Org(name=DEV_ORG_NAME, slug=DEV_ORG_SLUG)
+    org = Org(name=name, slug=slug)
     session.add(org)
     await session.flush()
-    logger.info("seed_demo_org_created", slug=DEV_ORG_SLUG)
+    logger.info("seed_demo_org_created", slug=slug)
     return org
 
 
@@ -516,13 +610,40 @@ async def _seed_spr_thread(
         await session.flush()
 
 
+async def _ensure_kb_attachment(
+    session: AsyncSession,
+    *,
+    collection_id: UUID,
+    entity_type: str,
+    entity_id: UUID,
+    attached_by: UUID,
+) -> None:
+    attachment_result = await session.execute(
+        select(KBCollectionAttachment).where(
+            KBCollectionAttachment.collection_id == collection_id,
+            KBCollectionAttachment.entity_type == entity_type,
+            KBCollectionAttachment.entity_id == entity_id,
+        ),
+    )
+    if attachment_result.scalar_one_or_none() is None:
+        session.add(
+            KBCollectionAttachment(
+                collection_id=collection_id,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                attached_by=attached_by,
+            ),
+        )
+
+
 async def _seed_kb_collection(
     session: AsyncSession,
     *,
     org: Org,
     owner: User,
     task: Task,
-) -> None:
+    cluster: Cluster,
+) -> KBCollection:
     collection_name = f"{_DEMO_MARKER}Reference — methodology guides"
     result = await session.execute(
         select(KBCollection).where(
@@ -542,74 +663,117 @@ async def _seed_kb_collection(
         await session.flush()
         logger.info("seed_demo_kb_collection_created", collection_id=str(collection.id))
 
-    attachment_result = await session.execute(
-        select(KBCollectionAttachment).where(
-            KBCollectionAttachment.collection_id == collection.id,
-            KBCollectionAttachment.entity_type == "task",
-            KBCollectionAttachment.entity_id == task.id,
-        ),
+    await _ensure_kb_attachment(
+        session,
+        collection_id=collection.id,
+        entity_type="task",
+        entity_id=task.id,
+        attached_by=owner.id,
     )
-    if attachment_result.scalar_one_or_none() is None:
-        session.add(
-            KBCollectionAttachment(
-                collection_id=collection.id,
-                entity_type="task",
-                entity_id=task.id,
-                attached_by=owner.id,
-            ),
-        )
-
-    doc_result = await session.execute(
-        select(KBDocument).where(
-            KBDocument.collection_id == collection.id,
-            KBDocument.filename == "methods-guide.txt",
-        ),
+    await _ensure_kb_attachment(
+        session,
+        collection_id=collection.id,
+        entity_type="cluster",
+        entity_id=cluster.id,
+        attached_by=owner.id,
     )
-    document = doc_result.scalar_one_or_none()
-    if document is None:
-        document = KBDocument(
-            org_id=org.id,
-            collection_id=collection.id,
-            filename="methods-guide.txt",
-            s3_key=f"{org.id}/kb/seed-demo/{collection.id}/methods-guide.txt",
-            size_bytes=512,
-            file_type="txt",
-            status=KBDocumentStatus.READY,
-            chunk_count=2,
-            uploaded_by=owner.id,
-            processed_at=datetime.now(UTC).replace(tzinfo=None),
-        )
-        session.add(document)
-        await session.flush()
 
-        chunk_texts = [
-            (
-                "Research methodology guide: A within-subjects design compares conditions using "
-                "the same participants. Report effect sizes and confidence intervals alongside "
-                "p-values."
-            ),
-            (
-                "Sample size justification should cite power analysis assumptions including "
-                "expected effect size, alpha level, and desired statistical power."
-            ),
-        ]
-        zero_embedding = [0.0] * EMBEDDING_DIMENSION
-        for index, text in enumerate(chunk_texts):
-            session.add(
-                DocumentChunk(
-                    org_id=org.id,
-                    collection_id=collection.id,
-                    document_id=document.id,
-                    content=text,
-                    embedding=zero_embedding,
-                    chunk_index=index,
-                    token_count=max(len(text.split()), 1),
-                    metadata_={"source": "seed_demo", "filename": "methods-guide.txt"},
-                ),
-            )
-        logger.info("seed_demo_kb_document_created", document_id=str(document.id))
-
+    await seed_kb_document_processed(
+        session,
+        org=org,
+        collection_id=collection.id,
+        owner=owner,
+        filename="methods-guide.txt",
+        fixture_name="sample.txt",
+    )
     await session.flush()
+    return collection
+
+
+async def _seed_opening_qa_responses(
+    session: AsyncSession,
+    *,
+    thread: Thread,
+) -> None:
+    task = await session.get(Task, thread.task_id)
+    if task is None:
+        return
+
+    questions_result = await session.execute(
+        select(ThreadQAQuestion)
+        .join(
+            ActivityLibraryEntry,
+            ThreadQAQuestion.activity_entry_id == ActivityLibraryEntry.id,
+        )
+        .where(
+            ActivityLibraryEntry.thread_type == thread.thread_type,
+            ActivityLibraryEntry.module_type == task.module_type,
+            ThreadQAQuestion.stage == QAStage.OPENING,
+        )
+        .order_by(ThreadQAQuestion.sequence_index.asc())
+        .limit(1),
+    )
+    question = questions_result.scalar_one_or_none()
+    if question is None:
+        return
+
+    existing = await session.execute(
+        select(ThreadQAResponse.id).where(
+            ThreadQAResponse.thread_id == thread.id,
+            ThreadQAResponse.question_id == question.id,
+        ),
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+
+    session.add(
+        ThreadQAResponse(
+            thread_id=thread.id,
+            question_id=question.id,
+            response_text=(
+                "Proceed with a standard external review. Focus on methods validity first, "
+                "then contribution and clarity."
+            ),
+        ),
+    )
+    await session.flush()
+    logger.info("seed_demo_qa_response_created", thread_id=str(thread.id))
+
+
+async def _seed_pending_invitation(
+    session: AsyncSession,
+    *,
+    org: Org,
+    invited_by: User,
+) -> None:
+    result = await session.execute(
+        select(UserInvitation).where(
+            UserInvitation.org_id == org.id,
+            UserInvitation.email == DEMO_INVITEE_EMAIL.lower(),
+            UserInvitation.accepted_at.is_(None),
+            UserInvitation.revoked_at.is_(None),
+        ),
+    )
+    if result.scalar_one_or_none() is not None:
+        return
+
+    session.add(
+        UserInvitation(
+            org_id=org.id,
+            email=DEMO_INVITEE_EMAIL.lower(),
+            name=DEMO_INVITEE_NAME,
+            role=UserRole.USER,
+            token_hash=hash_invite_token(DEMO_INVITATION_TOKEN),
+            invited_by=invited_by.id,
+            expires_at=invitation_expires_at(),
+        ),
+    )
+    await session.flush()
+    logger.info(
+        "seed_demo_invitation_created",
+        email=DEMO_INVITEE_EMAIL,
+        invited_by=str(invited_by.id),
+    )
 
 
 async def _seed_paused_workflow(
@@ -618,6 +782,8 @@ async def _seed_paused_workflow(
     org: Org,
     owner: User,
     task: Task,
+    template_id: UUID,
+    intervention_question: str,
 ) -> None:
     result = await session.execute(
         select(WorkflowExecution).where(WorkflowExecution.task_id == task.id),
@@ -625,12 +791,11 @@ async def _seed_paused_workflow(
     if result.scalar_one_or_none() is not None:
         return
 
-    template_id = UUID(TEMPLATE_EPR_FULL_ID)
     template = await session.get(WorkflowTemplate, template_id)
     if template is None or len(template.thread_sequence) < 2:
         logger.warning(
             "seed_demo_workflow_skipped",
-            reason="epr_workflow_template_missing",
+            reason="workflow_template_missing",
             template_id=str(template_id),
         )
         return
@@ -700,10 +865,7 @@ async def _seed_paused_workflow(
             workflow_execution_id=execution.id,
             workflow_thread_execution_id=paused_step.id,
             trigger_type=InterventionTriggerType.EXPLICIT_AMBIGUITY,
-            question=(
-                "The paper describes two competing operational definitions of 'engagement'. "
-                "Which definition should be used for the methodology assessment?"
-            ),
+            question=intervention_question,
         ),
     )
     await session.flush()

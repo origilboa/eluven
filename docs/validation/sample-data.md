@@ -1,17 +1,22 @@
 # Demo sample data for MVP testing
 
-Rich, idempotent dataset for manual validation. Safe to re-run — existing entities are skipped by title/email.
+Rich, idempotent dataset for manual validation. Safe to re-run on an existing DB — existing entities are skipped by title/email.
 
 ## How to load
 
-**Full reset** (recommended — restores migration seeds + all demo data):
+**Full reset** (recommended — wipes DB, restores migration seeds, loads demo):
 
 ```bash
 cd backend
 poetry run python ../scripts/seed.py --reset-demo
 ```
 
-Incremental loads:
+`--reset-demo` runs `alembic downgrade 001`, `alembic upgrade head`, then `--demo`.  
+This deletes all prior application data (except platform org), re-seeds ActivityLibrary, workflow templates, platform instructions, and the full demo dataset.
+
+**Do not** use `--clear` followed by `--demo` — `--clear` removes migration seeds and `--demo` does not restore them.
+
+Incremental reload (keeps non-demo data created manually):
 
 ```bash
 cd backend
@@ -19,128 +24,97 @@ poetry run python ../scripts/seed.py --demo
 poetry run python ../scripts/seed.py --instructions   # cluster/task instructions only
 ```
 
-`--reset-demo` runs `alembic downgrade 001 && alembic upgrade head` then `--demo`.  
-This restores ActivityLibrary, platform instructions, workflow templates, and all demo entities
-(instruction levels org/user/cluster/task/thread addenda, all TaskMemory entry types, KB, workflows).
+### AWS and offline seed
 
-Or from EC2 with production credentials (one-time, when you want demo tasks in prod):
+Document seeding uploads fixtures to S3 and runs the document processor (real embeddings for KB). Requires dev AWS credentials (S3 + Bedrock), same as SST dev.
 
 ```bash
-cd /home/ubuntu/eluven/backend
-poetry run python ../scripts/seed.py --reset-demo
+SEED_SKIP_AWS=1 poetry run python ../scripts/seed.py --demo
 ```
 
-Minimal startup seed (API container) remains `--dev` only:
+Skips S3 upload/processing; DB rows may stay `pending` — use only when AWS is unavailable.
+
+Minimal API container startup remains `--dev` only (not demo):
 
 ```bash
 python scripts/seed.py --dev
 ```
 
-## Users
-
-Both users belong to **Dev Org** (`dev-org`).
+## Users (Dev Org `dev-org`)
 
 | Email | Password | Role | Purpose |
 |-------|----------|------|---------|
-| `dev@eluven.ai` | `devpassword123` | app_admin | Full access, Instruction Studio platform tab |
-| `reviewer@eluven.ai` | `reviewpassword123` | user | Second account — separate task list |
+| `dev@eluven.ai` | `devpassword123` | app_admin | Environment admin — Instruction Studio platform tab, org list |
+| `orgadmin@eluven.ai` | `orgadminpassword123` | org_admin | Org admin — users + invitations (no platform org tab) |
+| `reviewer@eluven.ai` | `reviewpassword123` | user | Standard researcher — separate task list |
+
+**Second org (empty):** `demo-org-b` — for app_admin organization list smoke tests.
+
+**Pending invitation:** `invitee@eluven.ai` (not yet a user). Accept-invite token (dev only):
+
+`/en/accept-invite?token=demo-invite-token-for-mvp-testing-only`
+
+## After reset — feature map
+
+| Feature | Where to test |
+|---------|----------------|
+| EPR task + threads + memory | **Demo EPR — Methods paper (in progress)** |
+| Paper under review (PDF) | Same task — `demo-manuscript.pdf` |
+| KB + RAG | Same task — collection **Demo Reference — methodology guides** |
+| Cluster KB attach | **Demo Assignment — Research Methods 101** |
+| Opening Q&A | Methods task → **Initial Read** thread → Q&A |
+| Paused EPR workflow | **Demo EPR — Workflow paused (intervention)** |
+| Paused SPR workflow | **Demo SPR — Workflow paused (intervention)** |
+| SPR submission | **Demo SPR — Alice Chen submission** |
+| RTL | **Demo EPR — Hebrew locale** |
+| Per-user tasks | Log in as `reviewer@` |
+| Admin users / invites | Log in as `orgadmin@` or `dev@` → Admin |
+| Org list (app_admin) | Log in as `dev@` → Admin → Organizations |
 
 ## Demo tasks (prefix `Demo `)
 
-All demo tasks are titled with the **`Demo `** prefix so they are easy to find and distinguish from real work.
-
-### External Paper Review (dev@eluven.ai)
+### External Paper Review (`dev@eluven.ai`)
 
 | Task | Status | Contents |
 |------|--------|----------|
-| Demo EPR — Draft (empty) | draft | Empty shell for upload / first-thread flows |
-| Demo EPR — Methods paper (in progress) | active | 2 threads, 5 memory entries, KB attached |
-| Demo EPR — Hebrew locale | active | `working_language=he` for RTL pass |
-| Demo EPR — Workflow paused (intervention) | active | Paused workflow with pending intervention |
+| Demo EPR — Draft (empty) | draft | Empty shell |
+| Demo EPR — Methods paper (in progress) | active | Threads, memory, KB, paper PDF, Q&A sample |
+| Demo EPR — Hebrew locale | active | `working_language=he` |
+| Demo EPR — Workflow paused (intervention) | active | Paused EPR workflow |
 
-### External Paper Review (reviewer@eluven.ai)
+### External Paper Review (`reviewer@eluven.ai`)
 
 | Task | Status |
 |------|--------|
 | Demo EPR — Reviewer-owned journal paper | active |
 
-### Student Paper Review (dev@eluven.ai)
+### Student Paper Review (`dev@eluven.ai`)
 
 | Entity | Details |
 |--------|---------|
 | **Assignment** | Demo Assignment — Research Methods 101 |
-| **Submission (active)** | Demo SPR — Alice Chen submission — thread + memory |
-| **Submission (draft)** | Demo SPR — Bob Martinez submission — empty draft |
-
-## Threads and memory
-
-**Demo EPR — Methods paper (in progress):**
-
-- `initial_read` — complete, sample conversation
-- `methodology_review` — active, sample conversation
-- TaskMemory: 2 findings, 1 assumption, 1 gap, 1 reference
-
-**Demo SPR — Alice Chen submission:**
-
-- `submission_read` — active, sample conversation
-- TaskMemory: 1 finding
+| **Submission (active)** | Demo SPR — Alice Chen — thread, memory, paper PDF |
+| **Submission (draft)** | Demo SPR — Bob Martinez — empty draft |
+| **Workflow demo** | Demo SPR — Workflow paused (intervention) |
 
 ## Knowledge base
 
-| Collection | Attached to | Notes |
-|------------|-------------|-------|
-| Demo Reference — methodology guides | Methods paper (in progress) task | `methods-guide.txt` marked READY with 2 chunks |
+| Collection | Attached to | Document |
+|------------|-------------|----------|
+| Demo Reference — methodology guides | Methods EPR task + Demo Assignment cluster | `methods-guide.txt` (processed via document pipeline when AWS available) |
 
-**RAG note:** Demo chunks use zero embeddings for seed simplicity. They appear in the KB UI as indexed documents. For live RAG retrieval testing, upload real files through the UI or run the validation script.
+## Workflow demos
 
-## Workflow demo
+| Task | Template | Notes |
+|------|----------|-------|
+| Demo EPR — Workflow paused | EPR Full Review | Paused on step 2; engagement definition question |
+| Demo SPR — Workflow paused | SPR Full Evaluation | Paused on step 2; rubric vs citation date question |
 
-**Demo EPR — Workflow paused (intervention):**
+Workflow **resume** after intervention requires WorkflowWorker running.
 
-- Status: `paused` on step 2 (`methodology_review`)
-- Intervention question: competing definitions of “engagement”
-- Use the workflow panel to respond and test resume (may require worker for full automation)
+## Cluster and task instructions
 
-## Documents: paper vs reference KB
-
-On each **task detail** page you will see two sections:
-
-| Section | What it is | Where to manage |
-|---------|------------|-----------------|
-| **Papers under review** | Manuscripts (EPR) or student submissions (SPR) — uploaded to the **task**, full text fed to AI in all threads | Upload on task detail page |
-| **Reference knowledge base** | Rubrics, guides, background reading — **KB collections** attached to task or cluster, retrieved via RAG | Task page (attach/remove) or [Knowledge Base](/kb) |
-
-Demo task **Demo EPR — Methods paper (in progress)** has a reference collection attached but **no sample paper file** — upload a PDF on the task page to test the full flow.
-
-## Cluster and task instructions (UI)
-
-After loading demo data, edit instructions in the app:
-
-| Location | What to set |
-|----------|-------------|
-| **Assignment detail** (`/clusters/{id}`) | Cluster-level instructions for all submissions — e.g. rubric notes for `Demo Assignment — Research Methods 101` |
-| **Task detail** (`/tasks/{id}`) | Task-level instructions (versioned) + per-thread-type addendum |
-
-Use **Thread scope** to apply instructions to all thread types or one ActivityLibrary thread type. Instructions are merged into AI context at levels 4–5 automatically.
-
-**Seeded sample content** (via `--instructions`):
-
-| Target | Content |
-|--------|---------|
-| Demo Assignment cluster | Class rubric (all threads) + rubric_evaluation-specific scoring guide |
-| Demo EPR — Methods paper | Review priorities + `initial_read` thread addendum |
-| Demo SPR — Alice Chen | Feedback tone + `submission_read` addendum |
-| Sample Paper Review | Generic EPR test instructions |
-
-## Clearing demo data
-
-```bash
-poetry run python ../scripts/seed.py --clear
-poetry run python ../scripts/seed.py --dev    # restore minimal dev user
-poetry run python ../scripts/seed.py --demo   # reload full demo set
-```
-
-`--clear` truncates all application tables except platform org and Alembic version.
+Seeded with `--demo` (org, user, cluster, task, thread addenda). Edit in app on assignment/task detail or Instruction Studio (levels 1–3 as `dev@`).
 
 ## Related
 

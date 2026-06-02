@@ -4,7 +4,7 @@ Seed script for Eluven development and testing.
 
 Usage:
     python scripts/seed.py --dev     # Minimal dev user + sample tasks (API startup)
-    python scripts/seed.py --demo    # Rich demo dataset — 2 users, tasks, threads, KB, workflows
+    python scripts/seed.py --demo    # Rich demo dataset — 3 roles, tasks, threads, KB, workflows
     python scripts/seed.py --instructions  # Sample cluster/task instructions only
     python scripts/seed.py --reset-demo   # Wipe + migration seeds + full demo dataset
     python scripts/seed.py --test    # Seed test fixtures
@@ -48,6 +48,9 @@ from seed.constants import (
     MVP_MODULE_EPR,
     MVP_MODULE_SPR,
     PLATFORM_ORG_SLUG,
+    ORG_ADMIN_USER_EMAIL,
+    ORG_ADMIN_USER_NAME,
+    ORG_ADMIN_USER_PASSWORD,
     REVIEWER_USER_EMAIL,
     REVIEWER_USER_NAME,
     REVIEWER_USER_PASSWORD,
@@ -133,6 +136,15 @@ async def _seed_dev_async() -> None:
             name=DEV_USER_NAME,
             role=UserRole.APP_ADMIN,
             password=DEV_USER_PASSWORD,
+        )
+
+        await _get_or_create_user(
+            session,
+            org=org,
+            email=ORG_ADMIN_USER_EMAIL,
+            name=ORG_ADMIN_USER_NAME,
+            role=UserRole.ORG_ADMIN,
+            password=ORG_ADMIN_USER_PASSWORD,
         )
 
         await _get_or_create_user(
@@ -332,7 +344,9 @@ async def _reset_demo_async() -> None:
     """Wipe app data, re-apply migration seeds, load full demo dataset."""
     _logger().info("reset_demo_starting")
     _run_alembic_migrations("downgrade", "001")
+    _logger().info("reset_demo_database_wiped")
     _run_alembic_migrations("upgrade", "head")
+    _logger().info("reset_demo_migrations_applied")
     await _seed_demo_wrapper_async()
     _logger().info("reset_demo_complete")
 
@@ -425,7 +439,7 @@ def main() -> None:
     group.add_argument(
         "--demo",
         action="store_true",
-        help="Seed rich demo dataset (2 users, tasks, threads, KB, workflows)",
+        help="Seed rich demo dataset (3 roles, tasks, threads, KB, workflows)",
     )
     group.add_argument(
         "--instructions",
