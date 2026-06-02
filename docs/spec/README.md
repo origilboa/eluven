@@ -2,6 +2,17 @@
 
 These files define the project-specific instructions for Cursor + Claude. Place the contents of this folder in `.cursor/rules/` at the root of your repository.
 
+## Spec documents in this folder
+
+| File | Purpose |
+|------|---------|
+| `academic_research_platform_concept_v1_2.docx` | Product concept and module specification |
+| `eluven_data_model_v1_0.docx` | Entity schemas, indexes, API specification |
+| `eluven_process_and_plan_v1_5.docx` | **Current** process and development plan |
+| `eluven_process_and_plan_v1_4.docx` | Prior plan version (superseded by v1.5) |
+
+Regenerate v1.5 after major milestones: `python scripts/generate_plan_v1_5.py` (requires `python-docx`).
+
 ## Files
 
 | File | Applies to | Purpose |
