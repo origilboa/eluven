@@ -40,6 +40,7 @@ RUN pip install --no-cache-dir "unstructured==${UNSTRUCTURED_VERSION}" --no-deps
     pip install --no-cache-dir \
       "pdfminer.six" \
       "pypdf" \
+      "pi-heif" \
       "unstructured.pytesseract>=0.3.12" \
       "openpyxl" \
       "xlrd" \
