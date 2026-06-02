@@ -62,7 +62,7 @@ if [[ "$ecs_desired" != "0" ]]; then
     --service "$ELUVEN_ECS_SERVICE" \
     --desired-count 0 \
     --output text >/dev/null
-  wait_for "ECS tasks to stop" [[ "$(ecs_running_count)" == "0" ]]
+  wait_for "ECS tasks to stop" ecs_is_stopped
 else
   log "ECS already scaled to 0."
 fi
@@ -77,7 +77,7 @@ if [[ "$rds_state" == "available" ]]; then
   aws_cli rds stop-db-instance \
     --db-instance-identifier "$ELUVEN_RDS_INSTANCE_ID" \
     --output text >/dev/null
-  wait_for "RDS to stop" [[ "$(rds_status)" == "stopped" ]]
+  wait_for "RDS to stop" rds_is_stopped
 elif [[ "$rds_state" == "stopped" ]]; then
   log "RDS already stopped."
 else
@@ -93,7 +93,7 @@ if [[ "$SKIP_EC2" -eq 0 ]]; then
   if [[ "$ec2_state" == "running" ]]; then
     log "Stopping EC2 ${ELUVEN_EC2_INSTANCE_ID}..."
     aws_cli ec2 stop-instances --instance-ids "$ELUVEN_EC2_INSTANCE_ID" --output text >/dev/null
-    wait_for "EC2 to stop" [[ "$(ec2_status)" == "stopped" ]]
+    wait_for "EC2 to stop" ec2_is_stopped
   else
     log "EC2 already ${ec2_state}."
   fi

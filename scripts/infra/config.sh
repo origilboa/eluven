@@ -47,9 +47,33 @@ wait_for() {
   local description=$1
   shift
   log "Waiting for ${description}..."
-  until eval "$*"; do
+  until "$@"; do
     sleep 10
   done
+}
+
+ec2_is_running() {
+  [[ "$(ec2_status)" == "running" ]]
+}
+
+ec2_is_stopped() {
+  [[ "$(ec2_status)" == "stopped" ]]
+}
+
+rds_is_available() {
+  [[ "$(rds_status)" == "available" ]]
+}
+
+rds_is_stopped() {
+  [[ "$(rds_status)" == "stopped" ]]
+}
+
+ecs_is_stopped() {
+  [[ "$(ecs_running_count)" == "0" ]]
+}
+
+ecs_at_desired_count() {
+  [[ "$(ecs_running_count)" == "$(ecs_desired_count)" && "$(ecs_running_count)" -ge 1 ]]
 }
 
 rds_status() {

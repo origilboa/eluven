@@ -87,7 +87,7 @@ if [[ "$SKIP_EC2" -eq 0 ]]; then
   if [[ "$ec2_state" == "stopped" ]]; then
     log "Starting EC2 ${ELUVEN_EC2_INSTANCE_ID}..."
     aws_cli ec2 start-instances --instance-ids "$ELUVEN_EC2_INSTANCE_ID" --output text >/dev/null
-    wait_for "EC2 to run" [[ "$(ec2_status)" == "running" ]]
+    wait_for "EC2 to run" ec2_is_running
   else
     log "EC2 already ${ec2_state}."
   fi
@@ -112,11 +112,11 @@ if [[ "$rds_state" == "stopped" ]]; then
   aws_cli rds start-db-instance \
     --db-instance-identifier "$ELUVEN_RDS_INSTANCE_ID" \
     --output text >/dev/null
-  wait_for "RDS to become available (this can take several minutes)" [[ "$(rds_status)" == "available" ]]
+  wait_for "RDS to become available (this can take several minutes)" rds_is_available
 elif [[ "$rds_state" == "available" ]]; then
   log "RDS already available."
 else
-  wait_for "RDS to become available (current state: ${rds_state})" [[ "$(rds_status)" == "available" ]]
+  wait_for "RDS to become available (current state: ${rds_state})" rds_is_available
 fi
 
 log "Scaling ECS ${ELUVEN_ECS_SERVICE} to ${ELUVEN_ECS_DESIRED_COUNT}..."
@@ -127,7 +127,7 @@ aws_cli ecs update-service \
   --force-new-deployment \
   --output text >/dev/null
 
-wait_for "ECS service to reach desired count" [[ "$(ecs_running_count)" == "$(ecs_desired_count)" && "$(ecs_running_count)" -ge 1 ]]
+wait_for "ECS service to reach desired count" ecs_at_desired_count
 
 echo
 log "Start complete. App should be reachable at ${ELUVEN_APP_URL} shortly."
