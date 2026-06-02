@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     s3_documents_bucket: str
     bedrock_embed_model_id: str = "amazon.titan-embed-text-v1"
-    default_bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    default_bedrock_model_id: str = "anthropic.claude-sonnet-4-5-20250929-v1:0"
     bedrock_max_output_tokens: int = 8000
     context_history_token_limit: int = 20000
     context_keep_recent_messages: int = 10

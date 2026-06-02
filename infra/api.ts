@@ -51,6 +51,7 @@ export const api = new sst.aws.Service("Api", {
     AWS_REGION: aws.getRegionOutput().name,
     ENVIRONMENT: $app.stage,
     LOG_LEVEL: "INFO",
+    DEFAULT_BEDROCK_MODEL_ID: "anthropic.claude-sonnet-4-5-20250929-v1:0",
   },
   dev: {
     command: "poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000",
