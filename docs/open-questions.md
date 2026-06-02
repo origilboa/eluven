@@ -2,6 +2,8 @@
 
 Tracked after MVP completeness implementation. Resolve before external launch or next major milestone.
 
+**MVP sign-off plan:** [validation/mvp-signoff-plan.md](validation/mvp-signoff-plan.md)
+
 ## Resolved (June 2026) — see [ADR 002](/docs/adr/002-mvp-scope-decisions-june-2026.md)
 
 | Decision | Choice |
