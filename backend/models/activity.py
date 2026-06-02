@@ -53,6 +53,7 @@ class ActivityLibraryEntry(Base):
     token_budget_warning_threshold: Mapped[float] = mapped_column(Float, default=0.8)
     supports_automation: Mapped[bool] = mapped_column(Boolean, default=True)
     automation_execution_spec: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    default_instruction_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),

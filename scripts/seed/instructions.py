@@ -4,18 +4,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logging import get_logger
 from models.cluster import Cluster
-from models.instruction import (
-    InstructionLevel,
-    InstructionSet,
-    InstructionVersion,
-    TaskThreadTypeInstruction,
-)
+from models.instruction import InstructionLevel, InstructionSet, InstructionVersion
 from models.task import Task
+from models.thread import Thread
 from models.user import User
 from seed.constants import DEV_USER_EMAIL
 
@@ -174,11 +170,12 @@ async def seed_sample_instructions_for_session(session: AsyncSession) -> int:
             content=EPR_TASK_INSTRUCTION,
         ):
             seeded_count += 1
-        if await _ensure_thread_type_addendum(
+        if await _ensure_thread_instruction(
             session,
             task_id=epr_task.id,
             thread_type="initial_read",
             content=EPR_THREAD_ADDENDUM_INITIAL_READ,
+            org_id=dev_user.org_id,
             created_by=dev_user.id,
         ):
             seeded_count += 1
@@ -201,11 +198,12 @@ async def seed_sample_instructions_for_session(session: AsyncSession) -> int:
             content=SPR_TASK_INSTRUCTION,
         ):
             seeded_count += 1
-        if await _ensure_thread_type_addendum(
+        if await _ensure_thread_instruction(
             session,
             task_id=spr_task.id,
             thread_type="submission_read",
             content=SPR_THREAD_ADDENDUM_SUBMISSION_READ,
+            org_id=dev_user.org_id,
             created_by=dev_user.id,
         ):
             seeded_count += 1
@@ -292,6 +290,7 @@ async def _ensure_versioned_instruction(
     content: str,
     cluster_id: UUID | None = None,
     task_id: UUID | None = None,
+    thread_id: UUID | None = None,
     thread_type: str | None = None,
     owner_org_id: UUID | None = None,
     user_id: UUID | None = None,
@@ -305,6 +304,8 @@ async def _ensure_versioned_instruction(
         query = query.where(InstructionSet.cluster_id == cluster_id)
     if task_id is not None:
         query = query.where(InstructionSet.task_id == task_id)
+    if thread_id is not None:
+        query = query.where(InstructionSet.thread_id == thread_id)
     if owner_org_id is not None:
         query = query.where(InstructionSet.owner_org_id == owner_org_id)
     if user_id is not None:
@@ -317,6 +318,8 @@ async def _ensure_versioned_instruction(
         query = query.where(InstructionSet.cluster_id.is_(None))
     if task_id is None:
         query = query.where(InstructionSet.task_id.is_(None))
+    if thread_id is None:
+        query = query.where(InstructionSet.thread_id.is_(None))
     result = await session.execute(query.limit(1))
     instruction_set = result.scalar_one_or_none()
 
@@ -329,6 +332,7 @@ async def _ensure_versioned_instruction(
             level=level,
             cluster_id=cluster_id,
             task_id=task_id,
+            thread_id=thread_id,
             thread_type=thread_type,
             owner_org_id=owner_org_id,
             user_id=user_id,
@@ -358,35 +362,67 @@ async def _ensure_versioned_instruction(
     return True
 
 
-async def _ensure_thread_type_addendum(
+async def _ensure_thread_instruction(
     session: AsyncSession,
     *,
     task_id: UUID,
     thread_type: str,
     content: str,
+    org_id: UUID,
     created_by: UUID,
 ) -> bool:
+    """Set demo thread instance instructions when a matching thread exists."""
     result = await session.execute(
-        select(TaskThreadTypeInstruction).where(
-            TaskThreadTypeInstruction.task_id == task_id,
-            TaskThreadTypeInstruction.thread_type == thread_type,
-        ),
+        select(Thread)
+        .where(Thread.task_id == task_id, Thread.thread_type == thread_type)
+        .limit(1),
     )
-    if result.scalar_one_or_none() is not None:
+    thread = result.scalar_one_or_none()
+    if thread is None:
         return False
 
-    session.add(
-        TaskThreadTypeInstruction(
-            task_id=task_id,
-            thread_type=thread_type,
-            content=content,
-            created_by=created_by,
-        ),
+    query = select(InstructionSet).where(
+        InstructionSet.level == InstructionLevel.THREAD,
+        InstructionSet.org_id == org_id,
+        InstructionSet.thread_id == thread.id,
     )
-    await session.flush()
-    logger.info(
-        "seed_thread_addendum_created",
-        task_id=str(task_id),
-        thread_type=thread_type,
+    set_result = await session.execute(query.limit(1))
+    instruction_set = set_result.scalar_one_or_none()
+
+    if instruction_set is not None and instruction_set.active_version_id is not None:
+        version = await session.get(InstructionVersion, instruction_set.active_version_id)
+        if version is not None and version.content.strip() == content.strip():
+            return False
+        if version is not None:
+            max_version = await session.scalar(
+                select(func.max(InstructionVersion.version_number)).where(
+                    InstructionVersion.instruction_set_id == instruction_set.id,
+                ),
+            )
+            next_version = int(max_version or 0) + 1
+            new_version = InstructionVersion(
+                instruction_set_id=instruction_set.id,
+                version_number=next_version,
+                content=content,
+                change_note=_SEED_CHANGE_NOTE,
+                created_by=created_by,
+            )
+            session.add(new_version)
+            await session.flush()
+            instruction_set.active_version_id = new_version.id
+            await session.flush()
+            logger.info(
+                "seed_thread_instruction_updated",
+                thread_id=str(thread.id),
+                version_number=next_version,
+            )
+            return True
+
+    return await _ensure_versioned_instruction(
+        session,
+        level=InstructionLevel.THREAD,
+        org_id=org_id,
+        created_by=created_by,
+        thread_id=thread.id,
+        content=content,
     )
-    return True

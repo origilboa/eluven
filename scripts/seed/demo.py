@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logging import get_logger
 from core.security import hash_password
 from models.activity import ActivityLibraryEntry, QAStage, ThreadQAQuestion, ThreadQAResponse
+from services.instructions.thread_instructions import create_thread_instruction_set
 from models.cluster import Cluster
 from models.invitation import UserInvitation
 from models.kb import KBCollection, KBCollectionAttachment
@@ -407,6 +408,33 @@ async def _get_or_create_thread(
     )
     session.add(thread)
     await session.flush()
+
+    activity_result = await session.execute(
+        select(ActivityLibraryEntry).where(
+            ActivityLibraryEntry.is_active.is_(True),
+            ActivityLibraryEntry.thread_type == thread_type,
+            ActivityLibraryEntry.module_type == task.module_type,
+            or_(
+                ActivityLibraryEntry.scope == "platform",
+                ActivityLibraryEntry.org_id == org.id,
+            ),
+        ),
+    )
+    activity_entries = list(activity_result.scalars().all())
+    activity = (
+        min(activity_entries, key=lambda entry: {"org": 0, "user": 1, "platform": 2}.get(entry.scope, 99))
+        if activity_entries
+        else None
+    )
+    await create_thread_instruction_set(
+        session,
+        thread=thread,
+        org_id=org.id,
+        created_by=owner.id,
+        activity=activity,
+        change_note="Copied from activity type default on demo thread create",
+    )
+
     logger.info(
         "seed_demo_thread_created",
         thread_type=thread_type,

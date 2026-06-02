@@ -165,11 +165,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         </section>
 
         <div className="space-y-6">
-          <TaskInstructionPanel
-            locale={locale}
-            taskId={taskId}
-            moduleType={task.module_type}
-          />
+          <TaskInstructionPanel locale={locale} taskId={taskId} />
           <TaskMemoryPanel locale={locale} memory={memory} />
           <WorkflowPanel locale={locale} taskId={taskId} moduleType={task.module_type} />
         </div>

@@ -98,6 +98,7 @@ __all__ = [
     "ix_instruction_sets_cluster_id",
     "ix_instruction_sets_user_id",
     "ix_instruction_sets_org_id",
+    "ix_instruction_sets_thread_id",
     "ix_task_thread_type_instructions_task_id_thread_type",
     "ix_thread_qa_responses_thread_id",
     "ix_tasks_owner_id_status",
@@ -169,6 +170,10 @@ ix_instruction_sets_user_id = Index(
 ix_instruction_sets_org_id = Index(
     "ix_instruction_sets_org_id",
     InstructionSet.owner_org_id,
+)
+ix_instruction_sets_thread_id = Index(
+    "ix_instruction_sets_thread_id",
+    InstructionSet.thread_id,
 )
 ix_task_thread_type_instructions_task_id_thread_type = Index(
     "ix_task_thread_type_instructions_task_id_thread_type",

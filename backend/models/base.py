@@ -8,7 +8,11 @@ from sqlalchemy.orm import DeclarativeBase
 
 def str_enum(enum_class: type[Enum]) -> SQLEnum:
     """PostgreSQL VARCHAR-backed enum matching Alembic migration schema."""
-    return SQLEnum(enum_class, native_enum=False)
+    return SQLEnum(
+        enum_class,
+        native_enum=False,
+        values_callable=lambda members: [member.value for member in members],
+    )
 
 
 class Base(DeclarativeBase):

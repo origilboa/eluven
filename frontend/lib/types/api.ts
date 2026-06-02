@@ -330,20 +330,9 @@ export type InstructionSetResponse = {
   thread_type?: string | null;
   cluster_id?: string | null;
   task_id?: string | null;
+  thread_id?: string | null;
   active_version: InstructionVersionResponse | null;
   versions: InstructionVersionResponse[];
-};
-
-export type TaskThreadTypeInstructionResponse = {
-  task_id: string;
-  thread_type: string;
-  content: string;
-  created_at: string;
-  updated_at: string;
-};
-
-export type UpsertTaskThreadTypeInstructionRequest = {
-  content: string;
 };
 
 export type CreateInstructionVersionRequest = {
@@ -437,4 +426,73 @@ export type InvitationPreviewResponse = {
 export type AcceptInviteRequest = {
   token: string;
   password: string;
+};
+
+export type AdminThreadQAQuestionResponse = {
+  id: string;
+  question_text: string;
+  stage: string;
+  response_type: string;
+  options: string[] | null;
+  is_required: boolean;
+  sequence_index: number;
+};
+
+export type AdminActivityLibraryEntryResponse = {
+  id: string;
+  thread_type: string;
+  module_type: string;
+  display_name: string;
+  description: string | null;
+  scope: string;
+  is_active: boolean;
+  default_model_id: string;
+  fallback_model_id: string | null;
+  token_budget: number | null;
+  token_budget_warning_threshold: number;
+  supports_automation: boolean;
+  default_instruction_content: string | null;
+  opening_question_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdminActivityLibraryDetailResponse = AdminActivityLibraryEntryResponse & {
+  opening_questions: AdminThreadQAQuestionResponse[];
+};
+
+export type CreateActivityLibraryEntryRequest = {
+  thread_type: string;
+  module_type: string;
+  display_name: string;
+  description?: string | null;
+  default_model_id?: string | null;
+  fallback_model_id?: string | null;
+  token_budget?: number | null;
+  token_budget_warning_threshold?: number;
+  supports_automation?: boolean;
+  default_instruction_content?: string | null;
+  is_active?: boolean;
+};
+
+export type UpdateActivityLibraryEntryRequest = {
+  display_name?: string;
+  description?: string | null;
+  default_model_id?: string;
+  fallback_model_id?: string | null;
+  token_budget?: number | null;
+  token_budget_warning_threshold?: number;
+  supports_automation?: boolean;
+  default_instruction_content?: string | null;
+  is_active?: boolean;
+};
+
+export type UpsertOpeningQAQuestionRequest = {
+  question_text: string;
+  is_required?: boolean;
+  sequence_index?: number;
+};
+
+export type ReplaceOpeningQuestionsRequest = {
+  questions: UpsertOpeningQAQuestionRequest[];
 };

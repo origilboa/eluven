@@ -79,8 +79,9 @@ def assemble_context(thread: Thread, task: Task, message: str) -> AssembledConte
             instruction_layer.org or "",     # 2. Org instructions (cached)
             instruction_layer.user or "",    # 3. User instructions (cached)
             instruction_layer.cluster or "", # 4. Cluster instructions
-            instruction_layer.task or "",    # 5. Task/thread instructions
-            f"Working language: {task.working_language.value}",  # 6. Language directive
+            instruction_layer.task or "",    # 5. Task-wide instructions
+            instruction_layer.thread or "",  # 6. Thread instance instructions
+            f"Working language: {task.working_language.value}",  # 7. Language directive
         ]),
         context_blocks=[
             task_context_block(task),        # 7. Task metadata and context
@@ -107,7 +108,8 @@ system_blocks = [
      "cache_control": {"type": "ephemeral"}},  # Cache org instructions
     {"type": "text", "text": user_instructions,
      "cache_control": {"type": "ephemeral"}},  # Cache user instructions
-    {"type": "text", "text": task_instructions},  # Task-specific — don't cache
+    {"type": "text", "text": task_instructions},  # Task-wide — don't cache
+    {"type": "text", "text": thread_instructions},  # Per-thread instance — don't cache
 ]
 ```
 

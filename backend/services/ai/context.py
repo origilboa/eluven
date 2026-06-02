@@ -17,12 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from core.logging import get_logger
 from models.activity import ThreadQAQuestion, ThreadQAResponse
-from models.instruction import (
-    InstructionLevel,
-    InstructionSet,
-    InstructionVersion,
-    TaskThreadTypeInstruction,
-)
+from models.instruction import InstructionLevel, InstructionSet, InstructionVersion
 from models.kb import KBDocumentStatus, TaskDocument, ThreadDocumentLoadStrategy
 from models.memory import TaskMemoryEntry, TaskMemoryEntryType
 from models.task import Task
@@ -122,16 +117,20 @@ class ContextAssembler:
                 thread_type=thread.thread_type,
             )
 
-        task_thread_text = await self._task_thread_instruction(session, task.id, thread.thread_type)
         task_level_text = await self._instruction_for_level(
             session,
             InstructionLevel.TASK,
             org_id=task.org_id,
             task_id=task.id,
-            thread_type=thread.thread_type,
+            thread_type=None,
         )
-        task_instruction_parts = [part for part in (task_level_text, task_thread_text) if part]
-        task_instructions = "\n\n".join(task_instruction_parts)
+        thread_text = await self._instruction_for_level(
+            session,
+            InstructionLevel.THREAD,
+            org_id=task.org_id,
+            thread_id=thread.id,
+            thread_type=None,
+        )
 
         system_blocks: list[dict[str, Any]] = []
         if platform_text:
@@ -142,8 +141,10 @@ class ContextAssembler:
             system_blocks.append(_cached_text_block(user_text))
         if cluster_text:
             system_blocks.append(_plain_text_block(cluster_text))
-        if task_instructions:
-            system_blocks.append(_plain_text_block(task_instructions))
+        if task_level_text:
+            system_blocks.append(_plain_text_block(task_level_text))
+        if thread_text:
+            system_blocks.append(_plain_text_block(thread_text))
         system_blocks.append(
             _plain_text_block(f"Working language: {working_language}"),
         )
@@ -210,11 +211,12 @@ class ContextAssembler:
         level: InstructionLevel,
         *,
         org_id: UUID,
-        thread_type: str,
+        thread_type: str | None = None,
         owner_org_id: UUID | None = None,
         user_id: UUID | None = None,
         cluster_id: UUID | None = None,
         task_id: UUID | None = None,
+        thread_id: UUID | None = None,
     ) -> str:
         query = select(InstructionSet).where(InstructionSet.level == level)
         if owner_org_id is not None:
@@ -225,35 +227,23 @@ class ContextAssembler:
             query = query.where(InstructionSet.cluster_id == cluster_id)
         if task_id is not None:
             query = query.where(InstructionSet.task_id == task_id)
+        if thread_id is not None:
+            query = query.where(InstructionSet.thread_id == thread_id)
         if level == InstructionLevel.PLATFORM:
             query = query.where(InstructionSet.org_id == org_id)
-        query = query.where(
-            (InstructionSet.thread_type.is_(None))
-            | (InstructionSet.thread_type == thread_type),
-        )
+        if thread_type is None:
+            query = query.where(InstructionSet.thread_type.is_(None))
+        else:
+            query = query.where(
+                (InstructionSet.thread_type.is_(None))
+                | (InstructionSet.thread_type == thread_type),
+            )
         result = await session.execute(query.limit(1))
         instruction_set = result.scalar_one_or_none()
         if instruction_set is None or instruction_set.active_version_id is None:
             return ""
         version = await session.get(InstructionVersion, instruction_set.active_version_id)
         return version.content if version is not None else ""
-
-    async def _task_thread_instruction(
-        self,
-        session: AsyncSession,
-        task_id: UUID,
-        thread_type: str,
-    ) -> str:
-        result = await session.execute(
-            select(TaskThreadTypeInstruction)
-            .where(
-                TaskThreadTypeInstruction.task_id == task_id,
-                TaskThreadTypeInstruction.thread_type == thread_type,
-            )
-            .limit(1),
-        )
-        row = result.scalar_one_or_none()
-        return row.content if row is not None else ""
 
     async def _task_memory_block(self, session: AsyncSession, task_id: UUID) -> str:
         result = await session.execute(

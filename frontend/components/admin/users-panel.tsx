@@ -34,6 +34,9 @@ export function UsersPanel({ locale, userRole, currentUserId }: UsersPanelProps)
           filterOrg: "סנן לפי ארגון",
           allOrgs: "כל הארגונים",
           empty: "אין משתמשים.",
+          loading: "טוען משתמשים…",
+          loadError: "לא ניתן לטעון משתמשים.",
+          retry: "נסה שוב",
           roles: { app_admin: "מנהל מערכת", org_admin: "מנהל ארגון", user: "משתמש" },
         }
       : {
@@ -50,6 +53,9 @@ export function UsersPanel({ locale, userRole, currentUserId }: UsersPanelProps)
           filterOrg: "Filter by org",
           allOrgs: "All orgs",
           empty: "No users yet.",
+          loading: "Loading users…",
+          loadError: "Could not load users.",
+          retry: "Try again",
           roles: { app_admin: "App admin", org_admin: "Org admin", user: "User" },
         };
 
@@ -60,7 +66,13 @@ export function UsersPanel({ locale, userRole, currentUserId }: UsersPanelProps)
   });
 
   const usersQueryKey = ["admin-users", orgFilter || null] as const;
-  const { data: users = [], isLoading } = useQuery({
+  const {
+    data: users = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: usersQueryKey,
     queryFn: () => {
       const suffix = orgFilter ? `?org_id=${encodeURIComponent(orgFilter)}` : "";
@@ -101,7 +113,22 @@ export function UsersPanel({ locale, userRole, currentUserId }: UsersPanelProps)
         ) : null}
       </div>
 
-      {isLoading ? null : users.length === 0 ? (
+      {isLoading ? (
+        <p className="text-start text-sm text-zinc-500">{copy.loading}</p>
+      ) : isError ? (
+        <div className="space-y-2 text-start">
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {error instanceof Error ? error.message : copy.loadError}
+          </p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="text-sm font-medium text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
+          >
+            {copy.retry}
+          </button>
+        </div>
+      ) : users.length === 0 ? (
         <p className="text-start text-sm text-zinc-500">{copy.empty}</p>
       ) : (
         <ul className="space-y-3">

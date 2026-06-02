@@ -25,12 +25,12 @@ from models.thread import MessageRole, Thread, ThreadMessage
 from models.user import User
 from schemas.threads import (
     CreateThreadRequest,
+    DocumentDownloadUrlResponse,
     MessageResponse,
     QAQuestionResponse,
     SendMessageRequest,
     StreamRequest,
     SubmitQARequest,
-    DocumentDownloadUrlResponse,
     ThreadDocumentResponse,
     ThreadResponse,
     UpdateThreadRequest,
@@ -39,6 +39,7 @@ from services.ai.client import AIClient
 from services.ai.context import ContextAssembler
 from services.document.constants import SUPPORTED_FILE_TYPES
 from services.document_queue import enqueue_document_processing
+from services.instructions.thread_instructions import create_thread_instruction_set
 from services.storage import StorageService
 
 logger = get_logger(__name__)
@@ -241,6 +242,14 @@ async def create_thread(
     )
     db.add(thread)
     await db.flush()
+
+    await create_thread_instruction_set(
+        db,
+        thread=thread,
+        org_id=current_user.org_id,
+        created_by=current_user.id,
+        activity=activity,
+    )
 
     logger.info(
         "thread_opened",

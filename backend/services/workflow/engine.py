@@ -23,6 +23,7 @@ from models.workflow import (
 )
 from schemas.task_memory import TaskMemoryEntryPayload
 from services.ai.client import AIClient
+from services.instructions.thread_instructions import create_thread_instruction_set
 from services.workflow.interventions import DetectedIntervention, detect_intervention
 from services.workflow.queue import enqueue_workflow_thread
 
@@ -401,6 +402,15 @@ class WorkflowEngine:
         )
         session.add(thread)
         await session.flush()
+
+        await create_thread_instruction_set(
+            session,
+            thread=thread,
+            org_id=task.org_id,
+            created_by=execution.triggered_by,
+            activity=activity,
+            change_note="Copied from activity type default on automated thread create",
+        )
 
         thread_execution.thread_id = thread.id
         await session.flush()

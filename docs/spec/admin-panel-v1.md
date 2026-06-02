@@ -60,6 +60,20 @@ POST   /api/v1/auth/accept-invite
 - Slug: `eluven`
 - `app_admin` may toggle `is_active` only; name and slug are read-only.
 
+## Activity library (app_admin)
+
+Platform thread types (ActivityLibrary) are managed under Admin → **Activity library**:
+
+```
+GET    /api/v1/admin/activity-library
+GET    /api/v1/admin/activity-library/{entry_id}
+POST   /api/v1/admin/activity-library
+PATCH  /api/v1/admin/activity-library/{entry_id}
+PUT    /api/v1/admin/activity-library/{entry_id}/opening-questions
+```
+
+Editable fields include `default_instruction_content` (copied to each new Thread on create), model routing, token budget, and opening Q&A questions. `thread_type` slug is immutable after create.
+
 ## Out of scope
 
 Budget, usage, storage quotas, SES email, self-registration, user deletion, audit log UI.

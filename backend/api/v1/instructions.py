@@ -9,23 +9,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.access import get_owned_cluster, get_owned_task
+from api.access import get_owned_cluster, get_owned_task, get_owned_thread
 from api.deps import get_current_active_user, get_db
 from core.logging import get_logger
-from models.instruction import (
-    InstructionLevel,
-    InstructionSet,
-    InstructionVersion,
-    TaskThreadTypeInstruction,
-)
+from models.instruction import InstructionLevel, InstructionSet, InstructionVersion
 from models.user import User, UserRole
 from schemas.instructions import (
     ActivateInstructionVersionRequest,
     CreateInstructionVersionRequest,
     InstructionSetResponse,
     InstructionVersionResponse,
-    TaskThreadTypeInstructionResponse,
-    UpsertTaskThreadTypeInstructionRequest,
 )
 
 logger = get_logger(__name__)
@@ -92,6 +85,7 @@ async def _entity_instruction_set_query(
     org_id: UUID,
     cluster_id: UUID | None = None,
     task_id: UUID | None = None,
+    thread_id: UUID | None = None,
     thread_type: str | None = None,
 ):
     query = select(InstructionSet).where(
@@ -102,6 +96,8 @@ async def _entity_instruction_set_query(
         query = query.where(InstructionSet.cluster_id == cluster_id)
     if task_id is not None:
         query = query.where(InstructionSet.task_id == task_id)
+    if thread_id is not None:
+        query = query.where(InstructionSet.thread_id == thread_id)
     if thread_type is None:
         query = query.where(InstructionSet.thread_type.is_(None))
     else:
@@ -138,6 +134,7 @@ async def _get_or_create_entity_instruction_set(
     user: User,
     cluster_id: UUID | None = None,
     task_id: UUID | None = None,
+    thread_id: UUID | None = None,
     thread_type: str | None = None,
 ) -> InstructionSet:
     query = await _entity_instruction_set_query(
@@ -145,6 +142,7 @@ async def _get_or_create_entity_instruction_set(
         org_id=user.org_id,
         cluster_id=cluster_id,
         task_id=task_id,
+        thread_id=thread_id,
         thread_type=thread_type,
     )
     result = await session.execute(query.limit(1))
@@ -157,6 +155,7 @@ async def _get_or_create_entity_instruction_set(
         level=level,
         cluster_id=cluster_id,
         task_id=task_id,
+        thread_id=thread_id,
         thread_type=thread_type,
     )
     session.add(instruction_set)
@@ -171,6 +170,7 @@ async def _get_entity_instruction_set(
     org_id: UUID,
     cluster_id: UUID | None = None,
     task_id: UUID | None = None,
+    thread_id: UUID | None = None,
     thread_type: str | None = None,
 ) -> InstructionSet | None:
     query = await _entity_instruction_set_query(
@@ -178,6 +178,7 @@ async def _get_entity_instruction_set(
         org_id=org_id,
         cluster_id=cluster_id,
         task_id=task_id,
+        thread_id=thread_id,
         thread_type=thread_type,
     )
     result = await session.execute(query.limit(1))
@@ -223,6 +224,7 @@ async def _instruction_set_response(
         thread_type=instruction_set.thread_type,
         cluster_id=instruction_set.cluster_id,
         task_id=instruction_set.task_id,
+        thread_id=instruction_set.thread_id,
         active_version=active_version,
         versions=version_responses,
     )
@@ -472,72 +474,98 @@ async def activate_task_instruction_version(
     return await _instruction_set_response(db, instruction_set)
 
 
-# --- Task thread-type addendum (level 5 — per thread type, not versioned) ---
+# --- Thread instructions (per-thread instance) ---
 
 
-@router.get(
-    "/tasks/{task_id}/thread-types/{thread_type}",
-    response_model=TaskThreadTypeInstructionResponse | None,
-)
-async def get_task_thread_type_instruction(
-    task_id: UUID,
-    thread_type: str,
+@router.get("/threads/{thread_id}", response_model=InstructionSetResponse)
+async def get_thread_instruction_set(
+    thread_id: UUID,
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> TaskThreadTypeInstructionResponse | None:
-    """Get per-thread-type instruction addendum for a task."""
-    await get_owned_task(db, task_id, current_user)
-    result = await db.execute(
-        select(TaskThreadTypeInstruction).where(
-            TaskThreadTypeInstruction.task_id == task_id,
-            TaskThreadTypeInstruction.thread_type == thread_type,
-        ),
+) -> InstructionSetResponse:
+    """Get thread-level instruction set and version history."""
+    await get_owned_thread(db, thread_id, current_user)
+    instruction_set = await _get_or_create_entity_instruction_set(
+        db,
+        level=InstructionLevel.THREAD,
+        user=current_user,
+        thread_id=thread_id,
     )
-    row = result.scalar_one_or_none()
-    if row is None:
-        return None
-    return TaskThreadTypeInstructionResponse.model_validate(row)
-
-
-@router.put(
-    "/tasks/{task_id}/thread-types/{thread_type}",
-    response_model=TaskThreadTypeInstructionResponse,
-)
-async def upsert_task_thread_type_instruction(
-    task_id: UUID,
-    thread_type: str,
-    body: UpsertTaskThreadTypeInstructionRequest,
-    current_user: Annotated[User, Depends(get_current_active_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> TaskThreadTypeInstructionResponse:
-    """Create or update per-thread-type instruction addendum for a task."""
-    await get_owned_task(db, task_id, current_user)
-    result = await db.execute(
-        select(TaskThreadTypeInstruction).where(
-            TaskThreadTypeInstruction.task_id == task_id,
-            TaskThreadTypeInstruction.thread_type == thread_type,
-        ),
-    )
-    row = result.scalar_one_or_none()
-    if row is None:
-        row = TaskThreadTypeInstruction(
-            task_id=task_id,
-            thread_type=thread_type,
-            content=body.content,
-            created_by=current_user.id,
-        )
-        db.add(row)
-    else:
-        row.content = body.content
-
-    await db.flush()
     logger.info(
-        "task_thread_type_instruction_upserted",
-        task_id=str(task_id),
-        thread_type=thread_type,
+        "thread_instruction_set_retrieved",
+        thread_id=str(thread_id),
         user_id=str(current_user.id),
     )
-    return TaskThreadTypeInstructionResponse.model_validate(row)
+    return await _instruction_set_response(db, instruction_set)
+
+
+@router.post(
+    "/threads/{thread_id}",
+    response_model=InstructionSetResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_thread_instruction_version(
+    thread_id: UUID,
+    body: CreateInstructionVersionRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> InstructionSetResponse:
+    """Create a new thread-level instruction version."""
+    await get_owned_thread(db, thread_id, current_user)
+    instruction_set = await _get_or_create_entity_instruction_set(
+        db,
+        level=InstructionLevel.THREAD,
+        user=current_user,
+        thread_id=thread_id,
+    )
+    return await _create_instruction_version(
+        db,
+        instruction_set=instruction_set,
+        body=body,
+        user=current_user,
+        log_context={
+            "level": InstructionLevel.THREAD.value,
+            "thread_id": str(thread_id),
+        },
+    )
+
+
+@router.post("/threads/{thread_id}/activate", response_model=InstructionSetResponse)
+async def activate_thread_instruction_version(
+    thread_id: UUID,
+    body: ActivateInstructionVersionRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> InstructionSetResponse:
+    """Promote a thread instruction version to active."""
+    await get_owned_thread(db, thread_id, current_user)
+    instruction_set = await _get_entity_instruction_set(
+        db,
+        level=InstructionLevel.THREAD,
+        org_id=current_user.org_id,
+        thread_id=thread_id,
+    )
+    if instruction_set is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Instruction set not found",
+        )
+
+    version = await db.get(InstructionVersion, body.version_id)
+    if version is None or version.instruction_set_id != instruction_set.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Instruction version not found",
+        )
+
+    instruction_set.active_version_id = version.id
+    logger.info(
+        "thread_instruction_version_activated",
+        thread_id=str(thread_id),
+        version_id=str(version.id),
+        user_id=str(current_user.id),
+    )
+    return await _instruction_set_response(db, instruction_set)
 
 
 # --- Instruction Studio levels 1–3 ---

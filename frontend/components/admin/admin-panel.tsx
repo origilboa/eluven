@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 
+import { ActivityLibraryPanel } from "@/components/admin/activity-library-panel";
 import { InvitationsPanel } from "@/components/admin/invitations-panel";
 import { OrgsPanel } from "@/components/admin/orgs-panel";
 import { UsersPanel } from "@/components/admin/users-panel";
 import { isAppAdmin } from "@/lib/admin-access";
 import type { Locale } from "@/i18n.config";
 
-type AdminTab = "organizations" | "users" | "invitations";
+type AdminTab = "organizations" | "users" | "invitations" | "activity_library";
 
 type AdminPanelProps = {
   locale: Locale;
@@ -29,13 +30,15 @@ export function AdminPanel({ locale, userRole, currentUserId }: AdminPanelProps)
           organizations: "ארגונים",
           users: "משתמשים",
           invitations: "הזמנות",
+          activityLibrary: "ספריית פעילויות",
         }
       : {
           title: "Admin",
-          subtitle: "Manage organizations, users, and invitations",
+          subtitle: "Manage organizations, users, invitations, and activity types",
           organizations: "Organizations",
           users: "Users",
           invitations: "Invitations",
+          activityLibrary: "Activity library",
         };
 
   const tabs = useMemo(() => {
@@ -43,12 +46,17 @@ export function AdminPanel({ locale, userRole, currentUserId }: AdminPanelProps)
       { id: "organizations", label: copy.organizations, visible: isAppAdmin(userRole) },
       { id: "users", label: copy.users, visible: true },
       { id: "invitations", label: copy.invitations, visible: true },
+      { id: "activity_library", label: copy.activityLibrary, visible: isAppAdmin(userRole) },
     ];
     return items.filter((item) => item.visible);
-  }, [copy.invitations, copy.organizations, copy.users, userRole]);
+  }, [copy.activityLibrary, copy.invitations, copy.organizations, copy.users, userRole]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
+    <div
+      className={`mx-auto space-y-6 p-6 ${
+        activeTab === "activity_library" ? "max-w-6xl" : "max-w-5xl"
+      }`}
+    >
       <header className="text-start">
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">{copy.title}</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{copy.subtitle}</p>
@@ -77,6 +85,9 @@ export function AdminPanel({ locale, userRole, currentUserId }: AdminPanelProps)
       {activeTab === "users" ? <UsersPanel locale={locale} userRole={userRole} currentUserId={currentUserId} /> : null}
       {activeTab === "invitations" ? (
         <InvitationsPanel locale={locale} userRole={userRole} />
+      ) : null}
+      {activeTab === "activity_library" ? (
+        <ActivityLibraryPanel locale={locale} userRole={userRole} />
       ) : null}
     </div>
   );

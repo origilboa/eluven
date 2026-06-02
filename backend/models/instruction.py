@@ -17,13 +17,14 @@ if TYPE_CHECKING:
 
 
 class InstructionLevel(str, Enum):
-    """Five-level instruction hierarchy."""
+    """Instruction hierarchy including per-thread instance layer."""
 
     PLATFORM = "platform"
     ORG = "org"
     USER = "user"
     CLUSTER = "cluster"
     TASK = "task"
+    THREAD = "thread"
 
 
 class InstructionSet(Base):
@@ -41,6 +42,7 @@ class InstructionSet(Base):
     user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     cluster_id: Mapped[UUID | None] = mapped_column(ForeignKey("clusters.id"), nullable=True)
     task_id: Mapped[UUID | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
+    thread_id: Mapped[UUID | None] = mapped_column(ForeignKey("threads.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
@@ -70,7 +72,7 @@ class InstructionVersion(Base):
 
 
 class TaskThreadTypeInstruction(Base):
-    """Task-specific addendum for a thread type (not versioned in MVP)."""
+    """Deprecated: use thread-level InstructionSet. Retained for migration rollback."""
 
     __tablename__ = "task_thread_type_instructions"
 

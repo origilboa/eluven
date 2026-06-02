@@ -28,28 +28,11 @@ class InstructionSetResponse(BaseModel):
     thread_type: str | None = None
     cluster_id: UUID | None = None
     task_id: UUID | None = None
+    thread_id: UUID | None = None
     active_version: InstructionVersionResponse | None
     versions: list[InstructionVersionResponse]
 
     model_config = {"from_attributes": True}
-
-
-class TaskThreadTypeInstructionResponse(BaseModel):
-    """Per-task, per-thread-type instruction addendum (not versioned in MVP)."""
-
-    task_id: UUID
-    thread_type: str
-    content: str
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class UpsertTaskThreadTypeInstructionRequest(BaseModel):
-    """Request body for task thread-type instruction addendum."""
-
-    content: str = Field(min_length=1)
 
 
 class CreateInstructionVersionRequest(BaseModel):
