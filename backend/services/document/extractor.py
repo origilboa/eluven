@@ -6,14 +6,6 @@ import io
 from dataclasses import dataclass, field
 from typing import Any
 
-from unstructured.documents.elements import Table
-from unstructured.partition.csv import partition_csv
-from unstructured.partition.doc import partition_doc
-from unstructured.partition.docx import partition_docx
-from unstructured.partition.pdf import partition_pdf
-from unstructured.partition.text import partition_text
-from unstructured.partition.xlsx import partition_xlsx
-
 from core.logging import get_logger
 from services.document.constants import SUPPORTED_FILE_TYPES
 
@@ -46,6 +38,14 @@ class DocumentExtractor:
         Raises:
             ValueError: If file_type is not supported.
         """
+        from unstructured.documents.elements import Table
+        from unstructured.partition.csv import partition_csv
+        from unstructured.partition.doc import partition_doc
+        from unstructured.partition.docx import partition_docx
+        from unstructured.partition.pdf import partition_pdf
+        from unstructured.partition.text import partition_text
+        from unstructured.partition.xlsx import partition_xlsx
+
         normalized_type = file_type.lower().lstrip(".")
         size_bytes = len(file_bytes)
         logger.info(
@@ -59,7 +59,26 @@ class DocumentExtractor:
             raise ValueError(f"Unsupported file type: {file_type}")
 
         buffer = io.BytesIO(file_bytes)
-        elements = self._partition(buffer, normalized_type, filename)
+
+        if normalized_type == "pdf":
+            elements = partition_pdf(
+                file=buffer,
+                file_filename=filename,
+                strategy="fast",
+                hi_res=False,
+            )
+        elif normalized_type == "docx":
+            elements = partition_docx(file=buffer, file_filename=filename)
+        elif normalized_type == "doc":
+            elements = partition_doc(file=buffer, file_filename=filename)
+        elif normalized_type in {"txt", "tex"}:
+            elements = partition_text(file=buffer, file_filename=filename)
+        elif normalized_type == "xlsx":
+            elements = partition_xlsx(file=buffer, file_filename=filename)
+        elif normalized_type == "csv":
+            elements = partition_csv(file=buffer, file_filename=filename)
+        else:
+            raise ValueError(f"Unsupported file type: {file_type}")
 
         text_parts: list[str] = []
         tables: list[dict[str, Any]] = []
@@ -100,34 +119,6 @@ class DocumentExtractor:
         )
 
         return ExtractedDocument(text=text, tables=tables, metadata=metadata)
-
-    def _partition(
-        self,
-        buffer: io.BytesIO,
-        file_type: str,
-        filename: str,
-    ) -> list[Any]:
-        """Route to the appropriate Unstructured partitioner."""
-        if file_type == "pdf":
-            return partition_pdf(
-                file=buffer,
-                file_filename=filename,
-                strategy="fast",
-                hi_res=False,
-            )
-        if file_type == "docx":
-            return partition_docx(file=buffer, file_filename=filename)
-        if file_type == "doc":
-            return partition_doc(file=buffer, file_filename=filename)
-        if file_type == "txt":
-            return partition_text(file=buffer, file_filename=filename)
-        if file_type == "tex":
-            return partition_text(file=buffer, file_filename=filename)
-        if file_type == "xlsx":
-            return partition_xlsx(file=buffer, file_filename=filename)
-        if file_type == "csv":
-            return partition_csv(file=buffer, file_filename=filename)
-        raise ValueError(f"Unsupported file type: {file_type}")
 
 
 def _element_metadata(element: Any) -> dict[str, Any]:

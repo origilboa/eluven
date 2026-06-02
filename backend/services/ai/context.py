@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import boto3  # pyright: ignore[reportMissingTypeStubs]
@@ -29,9 +29,11 @@ from models.task import Task
 from models.thread import MessageRole, Thread, ThreadMessage
 from models.user import User
 from services.document.chunker import DocumentChunker
-from services.document.extractor import DocumentExtractor
 from services.rag.retriever import ContextChunk, RAGRetriever
 from services.storage import StorageService
+
+if TYPE_CHECKING:
+    from services.document.extractor import DocumentExtractor
 
 logger = get_logger(__name__)
 
@@ -65,9 +67,11 @@ class ContextAssembler:
         extractor: DocumentExtractor | None = None,
         chunker: DocumentChunker | None = None,
     ) -> None:
+        from services.document.extractor import DocumentExtractor as DocumentExtractorImpl
+
         self._rag = rag or RAGRetriever()
         self._storage = storage or StorageService()
-        self._extractor = extractor or DocumentExtractor()
+        self._extractor = extractor or DocumentExtractorImpl()
         self._chunker = chunker or DocumentChunker()
         self._encoding = tiktoken.get_encoding("cl100k_base")
 
