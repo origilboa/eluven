@@ -43,7 +43,7 @@ export const api = new sst.aws.Service("Api", {
     },
   ],
   environment: {
-    DATABASE_URL: $interpolate`postgresql://${db.username}:${db.password}@${db.host}:${db.port}/${db.database}`,
+    DATABASE_URL: $interpolate`postgresql+asyncpg://${db.username}:${db.password}@${db.host}:${db.port}/${db.database}`,
     NEXTAUTH_SECRET: nextAuthSecret.value,
     S3_DOCUMENTS_BUCKET: documentsBucket.name,
     DOCUMENT_PROCESSING_QUEUE_URL: documentProcessingQueue.url,
