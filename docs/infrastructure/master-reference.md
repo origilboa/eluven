@@ -1,6 +1,6 @@
 # Eluven Infrastructure Master Reference
 
-Last updated: May 31, 2026
+Last updated: June 2, 2026
 
 > This document is the single source of truth for all infrastructure,
 > accounts, services, and configurations. Update after every session.
@@ -16,6 +16,7 @@ Last updated: May 31, 2026
 | Nameservers | Delegated to Route 53 (AWS) |
 | DNS provider | AWS Route 53 |
 | Hosted zone ID | Z06614832D7DMEV9IQTMN |
+| Production app URL | https://app.eluven.ai |
 | SSL certificate | ACM — arn:aws:acm:us-east-1:124871951150:certificate/e479bebb-cdd6-4909-a2c5-8039ed3c2241 |
 | SSL covers | eluven.ai + *.eluven.ai |
 | SSL status | Issued |
@@ -26,6 +27,7 @@ Last updated: May 31, 2026
 |---|---|---|---|
 | NS | eluven.ai | 4 AWS nameservers | Domain delegation |
 | MX | eluven.ai | Google Workspace MX records | Email routing |
+| A / AAAA | app.eluven.ai | CloudFront distribution | Production frontend |
 | CNAME | _b568720054dfad612de09608c51d9d89.eluven.ai | ACM validation record | SSL validation |
 
 ---
@@ -80,14 +82,14 @@ Last updated: May 31, 2026
 |---|---|
 | Instance ID | i-02e28fbb277628ada |
 | Instance type | t3.xlarge (4 vCPU, 16GB RAM) |
-| AMI | Ubuntu 24.04 LTS (ami-067bcf851477ebb78) |
+| AMI | Ubuntu 24.04 LTS |
 | Region | us-east-1 |
 | Storage | 50GB gp3 |
 | Security group | sg-014bad2a06964d191 (SSH port 22) |
 | Key pair | eluven-dev |
 | SSH key location (Mac) | ~/.ssh/eluven-dev |
 | SSH host alias | eluven-dev (in ~/.ssh/config) |
-| Public IP | Dynamic — changes on stop/start, eluven-start handles this |
+| Public IP | Dynamic — changes on stop/start; `eluven-start` handles this |
 | OS user | ubuntu |
 | Cost | ~$0.17/hr when running |
 
@@ -98,12 +100,12 @@ Last updated: May 31, 2026
 | Python | 3.12 | Backend runtime |
 | Node.js | 20 | Frontend + SST |
 | Poetry | 2.4.1 | Python dependency management |
-| pnpm | latest | JS dependency management |
-| Docker | latest | Container runtime |
+| pnpm | 10.x (global via npm) | JS dependency management |
+| Docker | latest | Container runtime (OrbStack) |
 | AWS CLI | v2 | AWS access |
 | Git | system | Source control |
 
-### Running containers on EC2
+### Running containers on EC2 (local dev)
 | Container | Image | Port | Purpose |
 |---|---|---|---|
 | eluven-postgres | pgvector/pgvector:pg16 | 5432 | Local PostgreSQL + pgvector |
@@ -113,32 +115,99 @@ Last updated: May 31, 2026
 |---|---|
 | DATABASE_URL | postgresql://eluven:eluven_dev_password@localhost:5432/eluven |
 
+### Mac shell aliases (`~/.zshrc`)
+| Command | What it does |
+|---|---|
+| `eluven-start` | Start EC2, RDS, ECS; update SSH config; connect |
+| `eluven-stop` | Scale ECS to 0, stop RDS, stop EC2 |
+| `eluven-status` | Show EC2, ECS, RDS state |
+| `eluven-check` | Pre-stop safety check |
+
+Scripts: `scripts/infra/` — see [README.md](../../scripts/infra/README.md)
+
 ---
 
-## Database (Local Dev)
+## Database
 
+### Local dev (EC2 / OrbStack)
 | Item | Detail |
 |---|---|
-| Engine | PostgreSQL 16 |
-| Host | localhost (on EC2) |
+| Engine | PostgreSQL 16 + pgvector |
+| Host | localhost |
 | Port | 5432 |
 | Database name | eluven |
 | Username | eluven |
 | Password | eluven_dev_password |
-| Extensions | pgvector 0.8.2 |
-| Migrations | Alembic — 001_initial applied |
+| Migrations | Alembic — apply with `poetry run alembic upgrade head` |
 
-> ⚠️ Production database will be AWS RDS Aurora Serverless v2 — provisioned via SST on first deploy. Credentials will be in AWS Secrets Manager.
+### Production (RDS)
+| Item | Detail |
+|---|---|
+| Engine | PostgreSQL 16 (RDS) |
+| Instance | db.t3.micro |
+| Identifier | eluven-production-databaseinstance-vmdmnvvm |
+| Network | Private subnet in VPC (no public access) |
+| Credentials | AWS Secrets Manager — `DatabasePassword` via SST |
+| Migrations | Alembic `upgrade head` on API container startup |
+| Applied migrations | 001–006 (006 adds workflow templates + platform instruction seeds) |
+| pgvector | Enabled in migration 001 |
 
 ---
 
-## AWS Secrets Manager (to be set before first SST deploy)
+## AWS Secrets Manager (production)
 
-| Secret name | Purpose | Status |
+| Secret (SST name) | Purpose | Status |
 |---|---|---|
-| AnthropicApiKey | Bedrock / Anthropic API key | Not set yet |
-| DatabasePassword | RDS production database password | Not set yet |
-| NextAuthSecret | NextAuth.js session secret | Not set yet |
+| AnthropicApiKey | Bedrock / Anthropic API key | Set |
+| DatabasePassword | RDS production password | Set |
+| NextAuthSecret | NextAuth.js session secret | Set |
+
+---
+
+## SST Production Stack (deployed)
+
+Deploy from EC2: `npx sst deploy --stage production`
+
+| Resource | SST component | File | Notes |
+|---|---|---|---|
+| VPC | sst.aws.Vpc | infra/database.ts | No NAT gateway |
+| VPC endpoints | aws.ec2.VpcEndpoint | infra/vpc-endpoints.ts | S3, SQS, Bedrock, Secrets Manager, ECR, Logs, STS |
+| RDS PostgreSQL | sst.aws.Postgres | infra/database.ts | db.t3.micro |
+| S3 documents | sst.aws.Bucket | infra/storage.ts | Versioning enabled |
+| SQS DocumentProcessing | sst.aws.Queue | infra/queues.ts | 300s visibility |
+| SQS WorkflowExecution | sst.aws.Queue | infra/queues.ts | 600s visibility |
+| ECS cluster | sst.aws.Cluster | infra/api.ts | EluvenCluster |
+| **Api** | sst.aws.Service | infra/api.ts | FastAPI, port 8000, Cloud Map |
+| **DocumentWorker** | sst.aws.Service | infra/workers.ts | SQS poll, document indexing |
+| **WorkflowWorker** | sst.aws.Service | infra/workers.ts | SQS poll, workflow steps |
+| Frontend | sst.aws.Nextjs | infra/frontend.ts | OpenNext → CloudFront |
+| Secrets | sst.Secret | infra/secrets.ts | Linked to services |
+
+### ECS services (cluster `eluven-production-EluvenClusterCluster-bcxhvdvx`)
+
+| Service | Desired count | Cloud Map / URL |
+|---|---|---|
+| Api | 1 | Api.production.eluven.sst:8000 (internal) |
+| DocumentWorker | 1 | DocumentWorker.production.eluven.sst |
+| WorkflowWorker | 1 | WorkflowWorker.production.eluven.sst |
+
+### CloudWatch log groups
+| Service | Log group pattern |
+|---|---|
+| Api | `/sst/cluster/.../Api` |
+| DocumentWorker | `/sst/cluster/.../DocumentWorker` |
+| WorkflowWorker | `/sst/cluster/.../WorkflowWorker` |
+| Frontend Lambda | `/aws/lambda/eluven-production-Frontend*` |
+
+### AI models (production)
+| Use | Model ID |
+|---|---|
+| Chat (default) | us.anthropic.claude-sonnet-4-5-20250929-v1:0 |
+| Embeddings | amazon.titan-embed-text-v1 |
+
+### Dev seed (production API startup)
+- `alembic upgrade head && python /app/scripts/seed.py --dev && uvicorn ...`
+- Dev user: dev@eluven.ai / devpassword123
 
 ---
 
@@ -148,16 +217,20 @@ Last updated: May 31, 2026
 |---|---|
 | Account | origilboa (personal account) |
 | Repo | https://github.com/origilboa/eluven (private) |
-| Primary email | origilboa@gmail.com |
-| Personal access token | Saved in Mac keychain + EC2 git credentials |
-| Token scopes | repo + workflow |
 | Default branch | main |
 | Branching strategy | Feature branches → PR → merge to main |
 
-### GitHub Actions secrets
-| Secret | Value | Purpose |
+### GitHub Actions
+| Workflow | Trigger | Checks |
 |---|---|---|
-| AWS_DEPLOY_ROLE_ARN | arn:aws:iam::124871951150:role/eluven-github-deploy | CI/CD AWS authentication |
+| branch.yml | Push to non-main branches | Ruff, Pyright, pytest unit, ESLint, tsc, Jest |
+| pr.yml | PR to main | Above + integration tests |
+| deploy.yml | Push to main | Deploy via SST |
+
+### GitHub Actions secrets
+| Secret | Purpose |
+|---|---|
+| AWS_DEPLOY_ROLE_ARN | arn:aws:iam::124871951150:role/eluven-github-deploy |
 
 ---
 
@@ -165,59 +238,35 @@ Last updated: May 31, 2026
 
 | Item | Detail |
 |---|---|
-| Machine | MacBook Air (Ori's personal Mac) |
-| Shell | zsh |
-| AWS CLI | v2 — configured with eluven-dev credentials |
-| AWS profile | default (us-east-1) |
-| Node.js | 26 (via Homebrew) |
-| Homebrew | 5.1.14 |
+| Machine | MacBook Air |
+| Shell | zsh — aliases in **~/.zshrc** (not .zprofile) |
+| AWS CLI | v2 — eluven-dev credentials |
+| Node.js | 26 (Homebrew) |
 | SSH key | ~/.ssh/eluven-dev |
-| SSH config | ~/.ssh/config — Host eluven-dev |
-| Shell aliases | ~/.zprofile — eluven-start, eluven-check, eluven-stop |
 
-### Mac shell commands
-| Command | What it does |
+---
+
+## Validation scripts
+
+| Script | Purpose |
 |---|---|
-| `eluven-start` | Starts EC2, updates SSH config with new IP, SSHes in |
-| `eluven-check` | Checks running processes before stopping |
-| `eluven-stop` | Checks then stops EC2 with confirmation |
+| `scripts/validate_mvp_kb_rag.py` | Upload KB doc, poll until `ready` |
+| `scripts/run_mvp_validation.py` | Run automated MVP checklist |
 
 ---
 
-## SST Infrastructure (defined, not yet deployed)
+## Architecture decision records
 
-| Resource | File | Status |
-|---|---|---|
-| S3 Documents bucket | infra/storage.ts | Defined — deploy pending |
-| SQS DocumentProcessing queue | infra/queues.ts | Defined — deploy pending |
-| SQS WorkflowExecution queue | infra/queues.ts | Defined — deploy pending |
-| RDS Aurora Serverless v2 | infra/database.ts | Defined — deploy pending |
-| VPC | infra/database.ts | Defined — deploy pending |
-| Secrets | infra/secrets.ts | Defined — deploy pending |
-
-> Run `npx sst deploy --stage production` from EC2 to provision all AWS resources.
-
----
-
-## Namecheap
-
-| Item | Detail |
+| ADR | Title |
 |---|---|
-| Account | Ori's personal Namecheap account |
-| Domain | eluven.ai |
-| Expiry | May 29, 2028 |
-| Auto-renew | Enabled |
-| Privacy | WithheldforPrivacy — enabled, expires May 29, 2027 |
-| Nameservers | Custom DNS → Route 53 (AWS) |
+| [001-ecs-sqs-workers.md](../adr/001-ecs-sqs-workers.md) | Document and workflow workers as dedicated ECS services |
 
 ---
 
-## Next steps before build
+## Next steps (June 2026)
 
-1. SST first deploy — provision S3, SQS, RDS in AWS
-2. Set AWS Secrets Manager values (AnthropicApiKey, DatabasePassword, NextAuthSecret)
-3. KB & sharing design session (decisions 13, 14, 17, 18)
-4. Workflow & instruction design session (decisions 19-23)
-5. FinOps session (decision 15)
-6. Data model session
-7. Begin build sessions
+1. Internal validation — one full EPR task + one full SPR task; log UX friction (`docs/open-questions.md`)
+2. PDF indexing path — decide Unstructured ML deps vs alternative for production Docker image
+3. Instruction drafting — remaining EPR/SPR thread types
+4. Wire Playwright E2E into CI
+5. Pre-launch decisions (Section 2.2 of process plan) before external users

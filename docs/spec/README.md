@@ -8,10 +8,12 @@ These files define the project-specific instructions for Cursor + Claude. Place 
 |------|---------|
 | `academic_research_platform_concept_v1_2.docx` | Product concept and module specification |
 | `eluven_data_model_v1_0.docx` | Entity schemas, indexes, API specification |
-| `eluven_process_and_plan_v1_5.docx` | **Current** process and development plan |
-| `eluven_process_and_plan_v1_4.docx` | Prior plan version (superseded by v1.5) |
+| `eluven_process_and_plan_v1_6.docx` | **Current** process and development plan (post MVP audit) |
+| `eluven_process_and_plan_v1_5.docx` | Prior plan version (superseded by v1.6) |
 
-Regenerate v1.5 after major milestones: `python scripts/generate_plan_v1_5.py` (requires `python-docx`).
+Regenerate after major milestones: `python scripts/generate_plan_v1_6.py` (requires `python-docx`).
+
+See also: [docs/open-questions.md](../open-questions.md) for post-audit follow-ups.
 
 ## Files
 

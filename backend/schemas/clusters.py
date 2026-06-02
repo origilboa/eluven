@@ -1,6 +1,7 @@
 """Cluster API schemas (data model Section 10.3)."""
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -35,3 +36,11 @@ class ClusterResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class CreateSubmissionRequest(BaseModel):
+    """Request body for creating a Submission Task under an Assignment Cluster."""
+
+    title: str = Field(min_length=1, max_length=255)
+    working_language: str | None = Field(default=None, max_length=10)
+    context: dict[str, Any] | None = None

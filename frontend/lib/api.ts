@@ -159,4 +159,28 @@ export const api = {
       skipJsonContentType: true,
     });
   },
+
+  async download(
+    path: string,
+    options?: { headers?: HeadersInit; accessToken?: string },
+  ): Promise<{ blob: Blob; filename: string | null }> {
+    const token = await resolveAccessToken(options?.accessToken);
+    const headers = await buildHeaders(options?.headers, token);
+    headers.delete("Content-Type");
+
+    const response = await fetch(resolveApiUrl(path), {
+      method: "GET",
+      headers,
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      throw new ApiError(`Download failed with status ${response.status}`, response.status);
+    }
+
+    const disposition = response.headers.get("Content-Disposition");
+    const filenameMatch = disposition?.match(/filename="([^"]+)"/);
+    const blob = await response.blob();
+    return { blob, filename: filenameMatch?.[1] ?? null };
+  },
 };

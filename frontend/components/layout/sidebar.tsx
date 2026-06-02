@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { useMemo, useState } from "react";
 
 import { formatOrgLabel } from "@/lib/modules";
@@ -31,17 +32,21 @@ export function Sidebar({ locale, user }: SidebarProps) {
     locale === "he"
       ? {
           dashboard: "לוח בקרה",
+          assignments: "מטלות",
           kb: "מאגר ידע",
-          instructionStudio: "Instruction Studio",
+          instructionStudio: "סטודיו הוראות",
           collapse: "כווץ תפריט",
           expand: "הרחב תפריט",
+          logout: "התנתקות",
         }
       : {
           dashboard: "Dashboard",
+          assignments: "Assignments",
           kb: "KB",
           instructionStudio: "Instruction Studio",
           collapse: "Collapse sidebar",
           expand: "Expand sidebar",
+          logout: "Log out",
         };
 
   const navItems: NavItem[] = useMemo(
@@ -50,6 +55,11 @@ export function Sidebar({ locale, user }: SidebarProps) {
         href: `/${locale}/dashboard`,
         label: copy.dashboard,
         testId: "nav-dashboard",
+      },
+      {
+        href: `/${locale}/clusters`,
+        label: copy.assignments,
+        testId: "nav-clusters",
       },
       {
         href: `/${locale}/kb`,
@@ -62,7 +72,7 @@ export function Sidebar({ locale, user }: SidebarProps) {
         testId: "nav-instruction-studio",
       },
     ],
-    [copy.dashboard, copy.instructionStudio, copy.kb, locale],
+    [copy.assignments, copy.dashboard, copy.instructionStudio, copy.kb, locale],
   );
 
   return (
@@ -118,13 +128,23 @@ export function Sidebar({ locale, user }: SidebarProps) {
 
       <div className="border-t border-zinc-200 p-3 dark:border-zinc-800">
         {!collapsed ? (
-          <div className="text-start">
-            <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
-              {user.name}
-            </p>
-            <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
-              {formatOrgLabel(user.org_id, locale)}
-            </p>
+          <div className="space-y-3 text-start">
+            <div>
+              <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                {user.name}
+              </p>
+              <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                {formatOrgLabel(user.org_id, locale)}
+              </p>
+            </div>
+            <button
+              type="button"
+              data-testid="logout-button"
+              onClick={() => void signOut({ callbackUrl: `/${locale}/login` })}
+              className="text-sm font-medium text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
+            >
+              {copy.logout}
+            </button>
           </div>
         ) : (
           <p

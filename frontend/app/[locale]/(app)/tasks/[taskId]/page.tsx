@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { TaskDetailToolbar } from "@/components/tasks/task-detail-toolbar";
 import { TaskMemoryPanel } from "@/components/tasks/task-memory-panel";
 import { ThreadList } from "@/components/threads/thread-list";
+import { WorkflowPanel } from "@/components/workflows/workflow-panel";
 import { api, ApiError } from "@/lib/api";
 import { requireAuthSession } from "@/lib/auth-session";
 import { getStatusLabel } from "@/lib/format";
@@ -159,7 +160,10 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
           )}
         </section>
 
-        <TaskMemoryPanel locale={locale} memory={memory} />
+        <div className="space-y-6">
+          <TaskMemoryPanel locale={locale} memory={memory} />
+          <WorkflowPanel locale={locale} taskId={taskId} moduleType={task.module_type} />
+        </div>
       </div>
     </div>
   );

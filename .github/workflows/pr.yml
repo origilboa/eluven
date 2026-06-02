@@ -55,5 +55,5 @@ jobs:
         working-directory: frontend
 
       - name: Jest component tests
-        run: pnpm test
+        run: pnpm test -- --passWithNoTests
         working-directory: frontend

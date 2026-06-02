@@ -15,9 +15,12 @@ export default $config({
     const database = await import("./infra/database");
     await import("./infra/vpc-endpoints");
     const api = await import("./infra/api");
+    const workers = await import("./infra/workers");
     const frontend = await import("./infra/frontend");
     return {
       apiService: api.api.service,
+      documentWorkerService: workers.documentWorker.service,
+      workflowWorkerService: workers.workflowWorker.service,
       frontendUrl: frontend.frontend.url,
     };
   },

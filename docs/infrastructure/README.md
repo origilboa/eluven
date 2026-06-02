@@ -15,7 +15,7 @@
 | EC2 instance | i-02e28fbb277628ada | t3.xlarge, Ubuntu 24 LTS |
 | Production app | https://app.eluven.ai | CloudFront + Lambda + ECS API |
 | RDS | eluven-production-databaseinstance-vmdmnvvm | db.t3.micro |
-| ECS cluster | eluven-production-EluvenClusterCluster-bcxhvdvx | Service: Api |
+| ECS cluster | eluven-production-EluvenClusterCluster-bcxhvdvx | Api, DocumentWorker, WorkflowWorker |
 
 ## Start / stop (save cost when not working)
 
@@ -24,8 +24,8 @@ Scripts live in **`scripts/infra/`**. See [scripts/infra/README.md](../../script
 ### One-time Mac setup
 
 ```bash
-bash ~/eluven/scripts/infra/install-mac-aliases.sh >> ~/.zprofile
-source ~/.zprofile
+bash ~/eluven/scripts/infra/install-mac-aliases.sh >> ~/.zshrc
+source ~/.zshrc
 ```
 
 Requires AWS CLI on your Mac.

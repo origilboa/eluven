@@ -30,6 +30,10 @@ declare module "sst" {
       "type": "sst.aws.Queue"
       "url": string
     }
+    "DocumentWorker": {
+      "service": string
+      "type": "sst.aws.Service"
+    }
     "Documents": {
       "name": string
       "type": "sst.aws.Bucket"
@@ -48,6 +52,10 @@ declare module "sst" {
     "WorkflowExecution": {
       "type": "sst.aws.Queue"
       "url": string
+    }
+    "WorkflowWorker": {
+      "service": string
+      "type": "sst.aws.Service"
     }
   }
 }

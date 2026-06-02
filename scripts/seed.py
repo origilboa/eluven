@@ -140,7 +140,7 @@ async def _seed_dev_async() -> None:
             select(Cluster).where(
                 Cluster.owner_id == user.id,
                 Cluster.name == "Sample Assignment",
-                Cluster.cluster_type == "student_paper_review",
+                Cluster.cluster_type == "assignment",
             )
         )
         cluster = cluster_result.scalar_one_or_none()
@@ -149,7 +149,7 @@ async def _seed_dev_async() -> None:
                 org_id=org.id,
                 owner_id=user.id,
                 name="Sample Assignment",
-                cluster_type="student_paper_review",
+                cluster_type="assignment",
             )
             session.add(cluster)
             await session.flush()

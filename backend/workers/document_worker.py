@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-# Allow imports from backend/ when run from repo root
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
@@ -21,7 +20,7 @@ import boto3  # pyright: ignore[reportMissingTypeStubs]
 from botocore.exceptions import ClientError  # pyright: ignore[reportMissingTypeStubs]
 
 from core.config import settings
-from core.database import AsyncSessionLocal
+from core.database import AsyncSessionLocal, engine
 from core.logging import configure_logging, get_logger
 from services.document.processor import DocumentNotFoundError, DocumentProcessor
 from services.document_queue import get_document_processing_queue_url
@@ -64,7 +63,7 @@ async def _process_payload(payload: dict[str, Any]) -> None:
         await session.commit()
 
 
-def _handle_message(body: str) -> bool:
+async def _handle_message(body: str) -> bool:
     """Process one SQS message body. Returns True on success."""
     try:
         payload = json.loads(body)
@@ -78,7 +77,7 @@ def _handle_message(body: str) -> bool:
             document_id=str(document_id),
             document_type=document_type,
         )
-        asyncio.run(_process_payload(payload))
+        await _process_payload(payload)
         logger.info(
             "document_processed",
             document_id=str(document_id),
@@ -90,7 +89,7 @@ def _handle_message(body: str) -> bool:
         return False
 
 
-def run_worker() -> None:
+async def run_worker_async() -> None:
     """Poll DocumentProcessing SQS queue until interrupted."""
     configure_logging()
     queue_url = get_document_processing_queue_url()
@@ -100,7 +99,8 @@ def run_worker() -> None:
 
     while True:
         try:
-            response = sqs.receive_message(
+            response = await asyncio.to_thread(
+                sqs.receive_message,
                 QueueUrl=queue_url,
                 MaxNumberOfMessages=1,
                 WaitTimeSeconds=POLL_WAIT_SECONDS,
@@ -117,16 +117,28 @@ def run_worker() -> None:
         for message in messages:
             receipt_handle = message["ReceiptHandle"]
             body = message.get("Body", "")
-            success = _handle_message(body)
+            success = await _handle_message(body)
 
             if success:
-                sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
+                await asyncio.to_thread(
+                    sqs.delete_message,
+                    QueueUrl=queue_url,
+                    ReceiptHandle=receipt_handle,
+                )
                 logger.info("document_worker_message_deleted", receipt_handle=receipt_handle)
             else:
                 logger.info(
                     "document_worker_message_retained",
                     receipt_handle=receipt_handle,
                 )
+
+
+def run_worker() -> None:
+    """Entry point wrapper for async worker loop."""
+    try:
+        asyncio.run(run_worker_async())
+    finally:
+        asyncio.run(engine.dispose())
 
 
 def main() -> None:

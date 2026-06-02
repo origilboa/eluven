@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Print shell aliases for Mac ~/.zprofile (does not modify files).
+# Print shell aliases for Mac (~/.zshrc for interactive zsh, or ~/.zprofile for login shells).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 cat <<EOF
-# Eluven infrastructure scripts — add to ~/.zprofile
+# Eluven infrastructure scripts
 export ELUVEN_REPO="${REPO_ROOT}"
 alias eluven-status='bash "\${ELUVEN_REPO}/scripts/infra/eluven-status.sh"'
 alias eluven-check='bash "\${ELUVEN_REPO}/scripts/infra/eluven-check.sh"'

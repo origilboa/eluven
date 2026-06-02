@@ -26,6 +26,9 @@ class Resource:
     class DocumentProcessing:
         type: str
         url: str
+    class DocumentWorker:
+        service: str
+        type: str
     class Documents:
         name: str
         type: str
@@ -40,4 +43,7 @@ class Resource:
     class WorkflowExecution:
         type: str
         url: str
+    class WorkflowWorker:
+        service: str
+        type: str
 

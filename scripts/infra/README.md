@@ -16,15 +16,14 @@ Pause and resume billable AWS resources when you are not working.
 
 ## Setup (Mac — run once)
 
-Add to `~/.zprofile` (adjust path if your repo clone differs):
+Add to **`~/.zshrc`** (default for Terminal / Cursor on macOS):
 
 ```bash
-export ELUVEN_REPO="${HOME}/eluven"   # or wherever you clone on Mac
-alias eluven-status='bash "${ELUVEN_REPO}/scripts/infra/eluven-status.sh"'
-alias eluven-check='bash "${ELUVEN_REPO}/scripts/infra/eluven-check.sh"'
-alias eluven-stop='bash "${ELUVEN_REPO}/scripts/infra/eluven-stop.sh"'
-alias eluven-start='bash "${ELUVEN_REPO}/scripts/infra/eluven-start.sh" --connect'
+bash ~/eluven/scripts/infra/install-mac-aliases.sh >> ~/.zshrc
+source ~/.zshrc
 ```
+
+Some login shells use `~/.zprofile` instead — use that only if `source ~/.zshrc` does not define the aliases.
 
 Requires AWS CLI configured on your Mac (`aws sts get-caller-identity`).
 

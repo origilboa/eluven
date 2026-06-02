@@ -6,6 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +25,8 @@ from schemas.tasks import (
     TaskResponse,
     UpdateTaskRequest,
 )
+
+from services.export.word_exporter import build_task_word_export
 
 logger = get_logger(__name__)
 
@@ -244,4 +247,46 @@ async def get_task_memory(
         assumptions=grouped[TaskMemoryEntryType.ASSUMPTION],
         gaps=grouped[TaskMemoryEntryType.GAP],
         references=grouped[TaskMemoryEntryType.REFERENCE],
+    )
+
+
+@router.get("/{task_id}/export/word")
+async def export_task_word(
+    task_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    """Export task memory and thread summary as a Word document."""
+    task = await get_owned_task(db, task_id, current_user)
+
+    memory_result = await db.execute(
+        select(TaskMemoryEntry)
+        .where(
+            TaskMemoryEntry.task_id == task_id,
+            TaskMemoryEntry.is_deleted.is_(False),
+        )
+        .order_by(TaskMemoryEntry.created_at.asc()),
+    )
+    memory_entries = list(memory_result.scalars().all())
+
+    thread_result = await db.execute(
+        select(Thread)
+        .where(Thread.task_id == task_id)
+        .order_by(Thread.created_at.asc()),
+    )
+    threads = list(thread_result.scalars().all())
+
+    content = build_task_word_export(task, memory_entries, threads)
+    filename = f"{task.title.replace(' ', '_')[:80]}_export.docx"
+
+    logger.info(
+        "task_word_exported",
+        task_id=str(task_id),
+        memory_entry_count=len(memory_entries),
+        thread_count=len(threads),
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

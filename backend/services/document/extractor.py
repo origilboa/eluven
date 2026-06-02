@@ -38,16 +38,34 @@ class DocumentExtractor:
         Raises:
             ValueError: If file_type is not supported.
         """
+        normalized_type = file_type.lower().lstrip(".")
+        size_bytes = len(file_bytes)
+
+        if normalized_type in {"txt", "tex"}:
+            text = file_bytes.decode("utf-8", errors="replace").strip()
+            metadata: dict[str, Any] = {
+                "filename": filename,
+                "file_type": normalized_type,
+                "size_bytes": size_bytes,
+                "element_count": 1 if text else 0,
+                "element_types": ["Text"],
+            }
+            logger.info(
+                "document_extract_complete",
+                file_type=normalized_type,
+                size_bytes=size_bytes,
+                text_length=len(text),
+                table_count=0,
+            )
+            return ExtractedDocument(text=text, tables=[], metadata=metadata)
+
         from unstructured.documents.elements import Table
         from unstructured.partition.csv import partition_csv
         from unstructured.partition.doc import partition_doc
         from unstructured.partition.docx import partition_docx
         from unstructured.partition.pdf import partition_pdf
-        from unstructured.partition.text import partition_text
         from unstructured.partition.xlsx import partition_xlsx
 
-        normalized_type = file_type.lower().lstrip(".")
-        size_bytes = len(file_bytes)
         logger.info(
             "document_extract_started",
             file_type=normalized_type,
@@ -71,8 +89,6 @@ class DocumentExtractor:
             elements = partition_docx(file=buffer, file_filename=filename)
         elif normalized_type == "doc":
             elements = partition_doc(file=buffer, file_filename=filename)
-        elif normalized_type in {"txt", "tex"}:
-            elements = partition_text(file=buffer, file_filename=filename)
         elif normalized_type == "xlsx":
             elements = partition_xlsx(file=buffer, file_filename=filename)
         elif normalized_type == "csv":

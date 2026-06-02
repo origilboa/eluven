@@ -20,7 +20,7 @@ import boto3  # pyright: ignore[reportMissingTypeStubs]
 from botocore.exceptions import ClientError  # pyright: ignore[reportMissingTypeStubs]
 
 from core.config import settings
-from core.database import AsyncSessionLocal
+from core.database import AsyncSessionLocal, engine
 from core.logging import configure_logging, get_logger
 from services.workflow.engine import WorkflowEngine, WorkflowEngineError
 from services.workflow.queue import get_workflow_execution_queue_url
@@ -35,10 +35,10 @@ async def _process_payload(payload: dict[str, Any]) -> bool:
     workflow_execution_id = UUID(str(payload["workflow_execution_id"]))
     thread_execution_id = UUID(str(payload["thread_execution_id"]))
 
-    engine = WorkflowEngine()
+    engine_service = WorkflowEngine()
     async with AsyncSessionLocal() as session:
         try:
-            await engine.execute_thread(
+            await engine_service.execute_thread(
                 workflow_execution_id,
                 thread_execution_id,
                 session,
@@ -65,7 +65,7 @@ async def _process_payload(payload: dict[str, Any]) -> bool:
             return False
 
 
-def _handle_message(body: str) -> bool:
+async def _handle_message(body: str) -> bool:
     """Process one SQS message body."""
     try:
         payload = json.loads(body)
@@ -81,13 +81,13 @@ def _handle_message(body: str) -> bool:
             workflow_execution_id=str(workflow_execution_id),
             thread_execution_id=str(thread_execution_id),
         )
-        return asyncio.run(_process_payload(payload))
+        return await _process_payload(payload)
     except Exception as exc:
         logger.warning("workflow_thread_processing_failed", error=str(exc))
         return False
 
 
-def run_worker() -> None:
+async def run_worker_async() -> None:
     """Poll WorkflowExecution SQS queue until interrupted."""
     configure_logging()
     queue_url = get_workflow_execution_queue_url()
@@ -97,7 +97,8 @@ def run_worker() -> None:
 
     while True:
         try:
-            response = sqs.receive_message(
+            response = await asyncio.to_thread(
+                sqs.receive_message,
                 QueueUrl=queue_url,
                 MaxNumberOfMessages=1,
                 WaitTimeSeconds=POLL_WAIT_SECONDS,
@@ -114,16 +115,28 @@ def run_worker() -> None:
         for message in messages:
             receipt_handle = message["ReceiptHandle"]
             body = message.get("Body", "")
-            success = _handle_message(body)
+            success = await _handle_message(body)
 
             if success:
-                sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
+                await asyncio.to_thread(
+                    sqs.delete_message,
+                    QueueUrl=queue_url,
+                    ReceiptHandle=receipt_handle,
+                )
                 logger.info("workflow_worker_message_deleted", receipt_handle=receipt_handle)
             else:
                 logger.info(
                     "workflow_worker_message_retained",
                     receipt_handle=receipt_handle,
                 )
+
+
+def run_worker() -> None:
+    """Entry point wrapper for async worker loop."""
+    try:
+        asyncio.run(run_worker_async())
+    finally:
+        asyncio.run(engine.dispose())
 
 
 def main() -> None:

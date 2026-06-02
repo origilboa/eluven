@@ -5,18 +5,27 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.access import get_owned_cluster
 from api.deps import get_current_active_user, get_db
+from core.cluster_types import (
+    MODULE_STUDENT_PAPER_REVIEW,
+    is_assignment_cluster,
+)
 from core.logging import get_logger
 from models.cluster import Cluster
-from models.task import Task
+from models.task import Task, TaskStatus
 from models.thread import Thread
 from models.user import User
-from schemas.clusters import ClusterResponse, CreateClusterRequest, UpdateClusterRequest
+from schemas.clusters import (
+    ClusterResponse,
+    CreateClusterRequest,
+    CreateSubmissionRequest,
+    UpdateClusterRequest,
+)
 from schemas.tasks import TaskResponse
 
 logger = get_logger(__name__)
@@ -97,6 +106,12 @@ async def create_cluster(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ClusterResponse:
     """Create a new cluster."""
+    if body.cluster_type == MODULE_STUDENT_PAPER_REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use cluster_type 'assignment' for Student Paper Review Assignments",
+        )
+
     working_language = body.working_language or current_user.default_working_language
     cluster = Cluster(
         org_id=current_user.org_id,
@@ -184,3 +199,66 @@ async def list_cluster_tasks(
         count=len(responses),
     )
     return responses
+
+
+@router.get("/{cluster_id}/submissions", response_model=list[TaskResponse])
+async def list_cluster_submissions(
+    cluster_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[TaskResponse]:
+    """List Submission Tasks for an Assignment Cluster."""
+    cluster = await get_owned_cluster(db, cluster_id, current_user)
+    if not is_assignment_cluster(cluster.cluster_type):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cluster is not an Assignment",
+        )
+    return await list_cluster_tasks(cluster_id, current_user, db)
+
+
+@router.post(
+    "/{cluster_id}/submissions",
+    response_model=TaskResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_submission(
+    cluster_id: UUID,
+    body: CreateSubmissionRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TaskResponse:
+    """Create a Submission Task under an Assignment Cluster."""
+    cluster = await get_owned_cluster(db, cluster_id, current_user)
+    if not is_assignment_cluster(cluster.cluster_type):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cluster is not an Assignment",
+        )
+
+    working_language = (
+        body.working_language
+        or cluster.working_language
+        or current_user.default_working_language
+    )
+    task = Task(
+        org_id=current_user.org_id,
+        owner_id=current_user.id,
+        cluster_id=cluster.id,
+        title=body.title,
+        module_type=MODULE_STUDENT_PAPER_REVIEW,
+        status=TaskStatus.DRAFT,
+        working_language=working_language,
+        context=body.context,
+    )
+    db.add(task)
+    await db.flush()
+
+    logger.info(
+        "submission_created",
+        cluster_id=str(cluster_id),
+        task_id=str(task.id),
+        user_id=str(current_user.id),
+    )
+    thread_count = await _thread_count(db, task.id)
+    return _task_response(task, thread_count)

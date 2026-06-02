@@ -70,6 +70,13 @@ export type ClusterResponse = {
   created_at: string;
 };
 
+export type CreateClusterRequest = {
+  name: string;
+  cluster_type: string;
+  description?: string | null;
+  working_language?: string | null;
+};
+
 export type CreateThreadRequest = {
   thread_type: string;
   title?: string | null;
@@ -189,6 +196,16 @@ export type WorkflowTemplateResponse = {
   scope: string;
   thread_sequence: string[];
   created_at: string;
+};
+
+export type StartWorkflowRequest = {
+  template_id: string;
+};
+
+export type CreateSubmissionRequest = {
+  title: string;
+  working_language?: string | null;
+  context?: Record<string, unknown> | null;
 };
 
 export type WorkflowThreadExecutionResponse = {

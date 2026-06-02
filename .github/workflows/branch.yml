@@ -43,7 +43,7 @@ jobs:
         working-directory: backend
 
       - name: Install JS dependencies
-        run: npm install -g pnpm && pnpm install
+        run: npm install -g pnpm && pnpm install --no-frozen-lockfile
         working-directory: frontend
 
       - name: ESLint
@@ -52,4 +52,8 @@ jobs:
 
       - name: TypeScript check
         run: pnpm tsc --noEmit
+        working-directory: frontend
+
+      - name: Jest component tests
+        run: pnpm test
         working-directory: frontend

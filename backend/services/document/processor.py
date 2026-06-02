@@ -104,7 +104,7 @@ class DocumentProcessor:
 
             document.chunk_count = len(chunks_data)
             document.status = KBDocumentStatus.READY
-            document.processed_at = datetime.now(UTC)
+            document.processed_at = datetime.now(UTC).replace(tzinfo=None)
             document.processing_error = None
 
             logger.info(
