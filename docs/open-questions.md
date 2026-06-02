@@ -2,17 +2,26 @@
 
 Tracked after MVP completeness implementation. Resolve before external launch or next major milestone.
 
+## Resolved (June 2026) — see [ADR 002](/docs/adr/002-mvp-scope-decisions-june-2026.md)
+
+| Decision | Choice |
+|----------|--------|
+| PDF/DOCX indexing | Lightweight extractors (`pdfminer.six`, `python-docx`, LibreOffice for `.doc`) — no ML stack |
+| SPR MVP scope | Minimal: Assignment + Submission hierarchy only; no batch grading dashboard |
+| Word export | Module-aware generic export (EPR vs SPR headings); not full publisher templates |
+
+---
 ## Product / validation
 
 1. **EPR end-to-end with real PDF** — ActivityLibrary, Word export, and workflow UI exist; has a reviewer completed one full paper review task and signed off on output quality?
-2. **SPR end-to-end** — Assignment/submission UI and API exist; batch grading views and grade output format still minimal per concept doc.
+2. **SPR end-to-end** — Assignment/submission UI and API exist; **MVP scope is minimal** (no batch grading dashboard — see ADR 002). Validate one Assignment → Submission → thread review path.
 3. **Master instruction quality** — Only `initial_read` and `final_recommendation` platform seeds in migration 006; remaining EPR/SPR thread types need drafted instructions and quality testing.
 4. **Hebrew/RTL production validation** — i18n scaffold and logical CSS in place; full UI pass in `he` locale not documented.
 5. **UX friction log** — MVP success criterion §8.3; no structured friction notes yet from internal users.
 
 ## Technical
 
-6. **PDF/DOCX indexing in production** — Plain `.txt` validated; Unstructured ML stack not in Docker image (`unstructured_inference` omitted). Need decision: add deps vs lighter extractors for MVP PDF path.
+6. **PDF/DOCX indexing in production** — **Decided + validated (ADR 002):** lightweight extractors deployed; txt, pdf, and docx fixtures pass `scripts/validate_mvp_kb_rag.py` on production (2026-06-02).
 7. **Rate limiting (10 AI calls/min)** — Spec §4; not implemented.
 8. **Concurrent workflow limit (3/user)** — Not enforced.
 9. **Thread document upload UI** — Backend upload exists; no frontend.

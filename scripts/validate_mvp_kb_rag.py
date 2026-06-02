@@ -11,7 +11,19 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-FIXTURE = Path(__file__).resolve().parent.parent / "backend" / "tests" / "fixtures" / "sample.txt"
+FIXTURE_TXT = Path(__file__).resolve().parent.parent / "backend" / "tests" / "fixtures" / "sample.txt"
+FIXTURE_PDF = Path(__file__).resolve().parent.parent / "backend" / "tests" / "fixtures" / "sample.pdf"
+FIXTURE_DOCX = Path(__file__).resolve().parent.parent / "backend" / "tests" / "fixtures" / "sample.docx"
+
+_FIXTURES: dict[str, tuple[Path, str, str]] = {
+    "txt": (FIXTURE_TXT, "sample.txt", "text/plain"),
+    "pdf": (FIXTURE_PDF, "sample.pdf", "application/pdf"),
+    "docx": (
+        FIXTURE_DOCX,
+        "sample.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ),
+}
 
 
 def _request(
@@ -56,12 +68,31 @@ def main() -> int:
     parser.add_argument("--email", default="dev@eluven.ai")
     parser.add_argument("--password", default="devpassword123")
     parser.add_argument("--poll-seconds", type=int, default=120)
+    parser.add_argument(
+        "--fixture",
+        choices=tuple(_FIXTURES.keys()),
+        default="txt",
+        help="Fixture file type to upload (default: txt)",
+    )
     args = parser.parse_args()
 
+    fixture_path, filename, content_type = _FIXTURES[args.fixture]
+
     base = args.base_url.rstrip("/")
-    if not FIXTURE.exists():
-        FIXTURE.parent.mkdir(parents=True, exist_ok=True)
-        FIXTURE.write_text("Sample knowledge base document for MVP validation.\n")
+    if not fixture_path.exists():
+        fixture_path.parent.mkdir(parents=True, exist_ok=True)
+        if args.fixture != "txt":
+            print(
+                json.dumps(
+                    {
+                        "event": "kb_rag_validation_failed",
+                        "reason": f"missing_{args.fixture}_fixture",
+                        "path": str(fixture_path),
+                    },
+                ),
+            )
+            return 1
+        fixture_path.write_text("Sample knowledge base document for MVP validation.\n")
 
     try:
         login = _request(
@@ -83,7 +114,7 @@ def main() -> int:
             "POST",
             f"{base}/api/v1/kb/collections/{collection_id}/documents",
             token=token,
-            multipart=("sample.txt", FIXTURE.read_bytes(), "text/plain"),
+            multipart=(filename, fixture_path.read_bytes(), content_type),
         )
         document_id = str(upload["id"])
 
@@ -103,6 +134,7 @@ def main() -> int:
                     json.dumps(
                         {
                             "event": "kb_rag_validation_passed",
+                            "fixture": args.fixture,
                             "collection_id": collection_id,
                             "document_id": document_id,
                         },

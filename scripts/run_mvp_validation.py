@@ -9,7 +9,15 @@ import sys
 
 
 CHECKS: list[tuple[str, list[str]]] = [
-    ("KB upload and indexing", [sys.executable, "scripts/validate_mvp_kb_rag.py"]),
+    ("KB upload and indexing (txt)", [sys.executable, "scripts/validate_mvp_kb_rag.py"]),
+    (
+        "KB upload and indexing (pdf)",
+        [sys.executable, "scripts/validate_mvp_kb_rag.py", "--fixture", "pdf"],
+    ),
+    (
+        "KB upload and indexing (docx)",
+        [sys.executable, "scripts/validate_mvp_kb_rag.py", "--fixture", "docx"],
+    ),
 ]
 
 

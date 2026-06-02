@@ -1,13 +1,13 @@
-"""Document text extraction via Unstructured.io."""
+"""Document text extraction — lightweight MVP path (ADR 002)."""
 
 from __future__ import annotations
 
-import io
 from dataclasses import dataclass, field
 from typing import Any
 
 from core.logging import get_logger
 from services.document.constants import SUPPORTED_FILE_TYPES
+from services.document import lightweight_extractors as lw
 
 logger = get_logger(__name__)
 
@@ -25,46 +25,9 @@ class DocumentExtractor:
     """Extract plain text and tables from supported document formats."""
 
     def extract(self, file_bytes: bytes, file_type: str, filename: str) -> ExtractedDocument:
-        """Extract text, tables, and metadata from a document.
-
-        Args:
-            file_bytes: Raw file content.
-            file_type: File extension without dot (e.g. pdf, docx).
-            filename: Original filename for format detection.
-
-        Returns:
-            ExtractedDocument with combined text, table dicts, and metadata.
-
-        Raises:
-            ValueError: If file_type is not supported.
-        """
+        """Extract text, tables, and metadata from a document."""
         normalized_type = file_type.lower().lstrip(".")
         size_bytes = len(file_bytes)
-
-        if normalized_type in {"txt", "tex"}:
-            text = file_bytes.decode("utf-8", errors="replace").strip()
-            metadata: dict[str, Any] = {
-                "filename": filename,
-                "file_type": normalized_type,
-                "size_bytes": size_bytes,
-                "element_count": 1 if text else 0,
-                "element_types": ["Text"],
-            }
-            logger.info(
-                "document_extract_complete",
-                file_type=normalized_type,
-                size_bytes=size_bytes,
-                text_length=len(text),
-                table_count=0,
-            )
-            return ExtractedDocument(text=text, tables=[], metadata=metadata)
-
-        from unstructured.documents.elements import Table
-        from unstructured.partition.csv import partition_csv
-        from unstructured.partition.doc import partition_doc
-        from unstructured.partition.docx import partition_docx
-        from unstructured.partition.pdf import partition_pdf
-        from unstructured.partition.xlsx import partition_xlsx
 
         logger.info(
             "document_extract_started",
@@ -76,55 +39,24 @@ class DocumentExtractor:
         if normalized_type not in SUPPORTED_FILE_TYPES:
             raise ValueError(f"Unsupported file type: {file_type}")
 
-        buffer = io.BytesIO(file_bytes)
+        text: str
+        tables: list[dict[str, Any]]
+        metadata: dict[str, Any]
 
-        if normalized_type == "pdf":
-            elements = partition_pdf(
-                file=buffer,
-                file_filename=filename,
-                strategy="fast",
-                hi_res=False,
-            )
+        if normalized_type in {"txt", "tex"}:
+            text, tables, metadata = lw.extract_txt_or_tex(file_bytes, filename, normalized_type)
+        elif normalized_type == "pdf":
+            text, tables, metadata = lw.extract_pdf(file_bytes, filename)
         elif normalized_type == "docx":
-            elements = partition_docx(file=buffer, file_filename=filename)
+            text, tables, metadata = lw.extract_docx(file_bytes, filename)
         elif normalized_type == "doc":
-            elements = partition_doc(file=buffer, file_filename=filename)
+            text, tables, metadata = lw.extract_doc(file_bytes, filename)
         elif normalized_type == "xlsx":
-            elements = partition_xlsx(file=buffer, file_filename=filename)
+            text, tables, metadata = lw.extract_xlsx(file_bytes, filename)
         elif normalized_type == "csv":
-            elements = partition_csv(file=buffer, file_filename=filename)
+            text, tables, metadata = lw.extract_csv(file_bytes, filename)
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
-
-        text_parts: list[str] = []
-        tables: list[dict[str, Any]] = []
-        element_types: list[str] = []
-
-        for element in elements:
-            element_type = getattr(element, "category", type(element).__name__)
-            element_types.append(str(element_type))
-            if isinstance(element, Table):
-                table_entry: dict[str, Any] = {
-                    "text": str(element),
-                    "metadata": _element_metadata(element),
-                }
-                html = getattr(element.metadata, "text_as_html", None)
-                if html:
-                    table_entry["html"] = html
-                tables.append(table_entry)
-            else:
-                snippet = str(element).strip()
-                if snippet:
-                    text_parts.append(snippet)
-
-        text = "\n\n".join(text_parts)
-        metadata: dict[str, Any] = {
-            "filename": filename,
-            "file_type": normalized_type,
-            "size_bytes": size_bytes,
-            "element_count": len(elements),
-            "element_types": element_types,
-        }
 
         logger.info(
             "document_extract_complete",
@@ -132,16 +64,7 @@ class DocumentExtractor:
             size_bytes=size_bytes,
             text_length=len(text),
             table_count=len(tables),
+            extractor=metadata.get("extractor"),
         )
 
         return ExtractedDocument(text=text, tables=tables, metadata=metadata)
-
-
-def _element_metadata(element: Any) -> dict[str, Any]:
-    """Serialize Unstructured element metadata to a plain dict."""
-    metadata = getattr(element, "metadata", None)
-    if metadata is None:
-        return {}
-    if hasattr(metadata, "to_dict"):
-        return dict(metadata.to_dict())
-    return {}
