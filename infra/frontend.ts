@@ -11,6 +11,7 @@ export const frontend = new sst.aws.Nextjs("Frontend", {
   path: "frontend",
   vpc,
   link: [api, nextAuthSecret],
+  openNextVersion: "4.0.3",
   environment,
   server: {
     timeout: "60 seconds",
