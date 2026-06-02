@@ -66,6 +66,8 @@ export function CollectionCard({ collection, locale }: CollectionCardProps) {
           attachAction: "צרף",
           attaching: "מצרף…",
           confirmDelete: "למחוק את האוסף?",
+          confirmDetach: "להסיר את הצירוף?",
+          detach: "הסר",
           noAttachments: "לא מצורף",
         }
       : {
@@ -86,6 +88,8 @@ export function CollectionCard({ collection, locale }: CollectionCardProps) {
           attachAction: "Attach",
           attaching: "Attaching…",
           confirmDelete: "Delete this collection?",
+          confirmDetach: "Remove this attachment?",
+          detach: "Remove",
           noAttachments: "Not attached",
         };
 
@@ -128,11 +132,25 @@ export function CollectionCard({ collection, locale }: CollectionCardProps) {
       api.post(`/kb/collections/${collection.id}/attach`, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["kb-collections"] });
+      queryClient.invalidateQueries({ queryKey: ["task-reference-collections"] });
       setAttachOpen(false);
       setEntityId("");
       router.refresh();
     },
     onError: (mutationError: Error) => setError(mutationError.message),
+  });
+
+  const detachMutation = useMutation({
+    mutationFn: (attachmentId: string) =>
+      api.delete(`/kb/collections/${collection.id}/attach/${attachmentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["kb-collections"] });
+      queryClient.invalidateQueries({ queryKey: ["task-reference-collections"] });
+      router.refresh();
+    },
+    onError: (mutationError: Error) => {
+      window.alert(mutationError.message);
+    },
   });
 
   const documentLabel =
@@ -168,6 +186,13 @@ export function CollectionCard({ collection, locale }: CollectionCardProps) {
       return;
     }
     deleteMutation.mutate();
+  }
+
+  function handleDetach(attachmentId: string) {
+    if (!window.confirm(copy.confirmDetach)) {
+      return;
+    }
+    detachMutation.mutate(attachmentId);
   }
 
   const targetOptions = entityType === "task" ? tasks : clusters;
@@ -254,9 +279,18 @@ export function CollectionCard({ collection, locale }: CollectionCardProps) {
             collection.attachments.map((attachment) => (
               <span
                 key={attachment.id}
-                className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-950 dark:text-blue-300"
+                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-950 dark:text-blue-300"
               >
                 {attachmentLabel(attachment.entity_type, attachment.entity_name, locale)}
+                <button
+                  type="button"
+                  aria-label={copy.detach}
+                  onClick={() => handleDetach(attachment.id)}
+                  disabled={detachMutation.isPending}
+                  className="ms-0.5 rounded-full px-1 hover:bg-blue-100 dark:hover:bg-blue-900"
+                >
+                  ×
+                </button>
               </span>
             ))
           )}

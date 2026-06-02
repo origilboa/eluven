@@ -23,7 +23,7 @@ from models.instruction import (
     InstructionVersion,
     TaskThreadTypeInstruction,
 )
-from models.kb import KBDocumentStatus, ThreadDocument, ThreadDocumentLoadStrategy
+from models.kb import KBDocumentStatus, TaskDocument, ThreadDocumentLoadStrategy
 from models.memory import TaskMemoryEntry, TaskMemoryEntryType
 from models.task import Task
 from models.thread import MessageRole, Thread, ThreadMessage
@@ -149,7 +149,7 @@ class ContextAssembler:
         )
 
         memory_block = await self._task_memory_block(session, task.id)
-        thread_docs_block = await self._thread_documents_block(session, thread)
+        thread_docs_block = await self._task_documents_block(session, task)
         rag_block = await self._rag_block(session, message, task.id, thread.id)
         qa_block = await self._qa_responses_block(session, thread.id)
 
@@ -292,19 +292,19 @@ class ContextAssembler:
             lines.append(f"- [{entry.entry_type.value}] {entry.content}{confidence}")
         return "\n".join(lines)
 
-    async def _thread_documents_block(self, session: AsyncSession, thread: Thread) -> str:
+    async def _task_documents_block(self, session: AsyncSession, task: Task) -> str:
         result = await session.execute(
-            select(ThreadDocument).where(
-                ThreadDocument.thread_id == thread.id,
-                ThreadDocument.load_strategy == ThreadDocumentLoadStrategy.FULL_TEXT,
-                ThreadDocument.status == KBDocumentStatus.READY,
+            select(TaskDocument).where(
+                TaskDocument.task_id == task.id,
+                TaskDocument.load_strategy == ThreadDocumentLoadStrategy.FULL_TEXT,
+                TaskDocument.status == KBDocumentStatus.READY,
             ),
         )
         documents = list(result.scalars().all())
         if not documents:
             return ""
 
-        sections: list[str] = ["## Thread documents"]
+        sections: list[str] = ["## Papers under review"]
         for document in documents:
             file_bytes = await asyncio.to_thread(
                 self._storage.download_file,

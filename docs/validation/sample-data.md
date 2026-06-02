@@ -107,10 +107,10 @@ On each **task detail** page you will see two sections:
 
 | Section | What it is | Where to manage |
 |---------|------------|-----------------|
-| **Paper under review** | Manuscript (EPR) or student submission (SPR) — uploaded to a **thread**, full text fed to AI | Upload on task page (pick thread) or inside a thread |
-| **Reference knowledge base** | Rubrics, guides, background reading — **KB collections** attached to task or cluster, retrieved via RAG | [Knowledge Base](/kb) — create collection, upload files, attach to task |
+| **Papers under review** | Manuscripts (EPR) or student submissions (SPR) — uploaded to the **task**, full text fed to AI in all threads | Upload on task detail page |
+| **Reference knowledge base** | Rubrics, guides, background reading — **KB collections** attached to task or cluster, retrieved via RAG | Task page (attach/remove) or [Knowledge Base](/kb) |
 
-Demo task **Demo EPR — Methods paper (in progress)** has a reference collection attached but **no sample paper file** — upload a PDF on the task or thread page to test the full flow.
+Demo task **Demo EPR — Methods paper (in progress)** has a reference collection attached but **no sample paper file** — upload a PDF on the task page to test the full flow.
 
 ## Cluster and task instructions (UI)
 

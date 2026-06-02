@@ -20,6 +20,7 @@ from models.kb import (
     KBDocumentStatus,
     KBCollection,
     KBCollectionAttachment,
+    TaskDocument,
     ThreadDocument,
     ThreadDocumentLoadStrategy,
 )
@@ -204,7 +205,7 @@ class RAGRetriever:
     ) -> tuple[list[ScoredChunk], float]:
         """Run embedding, scoped vector search, and optional threshold fallback."""
         scope = await self._resolve_collection_scope(task, session)
-        thread_document_ids = await self._rag_thread_document_ids(session, thread_id=thread.id)
+        thread_document_ids = await self._rag_task_document_ids(session, task_id=task.id)
 
         if not scope.ordered_ids and not thread_document_ids:
             return [], threshold
@@ -323,13 +324,29 @@ class RAGRetriever:
         )
         return list(result.scalars().all())
 
+    async def _rag_task_document_ids(
+        self,
+        session: AsyncSession,
+        *,
+        task_id: UUID,
+    ) -> list[UUID]:
+        """Task documents eligible for RAG (indexed, RAG strategy, ready)."""
+        result = await session.execute(
+            select(TaskDocument.id).where(
+                TaskDocument.task_id == task_id,
+                TaskDocument.load_strategy == ThreadDocumentLoadStrategy.RAG,
+                TaskDocument.status == KBDocumentStatus.READY,
+            ),
+        )
+        return list(result.scalars().all())
+
     async def _rag_thread_document_ids(
         self,
         session: AsyncSession,
         *,
         thread_id: UUID,
     ) -> list[UUID]:
-        """Thread documents eligible for RAG (indexed, RAG strategy, ready)."""
+        """Legacy thread documents eligible for RAG (deprecated)."""
         result = await session.execute(
             select(ThreadDocument.id).where(
                 ThreadDocument.thread_id == thread_id,
@@ -368,6 +385,7 @@ class RAGRetriever:
             KBDocument.status == KBDocumentStatus.READY,
         )
         chunk_visible = or_(
+            DocumentChunk.task_document_id.in_(thread_document_ids),
             DocumentChunk.thread_document_id.in_(thread_document_ids),
             kb_ready,
         )
@@ -422,6 +440,11 @@ class RAGRetriever:
             for chunk in scored_chunks
             if chunk.chunk.thread_document_id is not None
         }
+        task_doc_ids = {
+            chunk.chunk.task_document_id
+            for chunk in scored_chunks
+            if chunk.chunk.task_document_id is not None
+        }
 
         kb_docs: dict[UUID, KBDocument] = {}
         if kb_doc_ids:
@@ -439,12 +462,20 @@ class RAGRetriever:
             )
             thread_docs = {doc.id: doc for doc in thread_result.scalars().all()}
 
+        task_docs: dict[UUID, TaskDocument] = {}
+        if task_doc_ids:
+            task_result = await session.execute(
+                select(TaskDocument).where(TaskDocument.id.in_(task_doc_ids)),
+            )
+            task_docs = {doc.id: doc for doc in task_result.scalars().all()}
+
         context_chunks: list[ContextChunk] = []
         for scored in scored_chunks:
             source_metadata = _source_metadata_for_chunk(
                 scored.chunk,
                 kb_documents=kb_docs,
                 thread_documents=thread_docs,
+                task_documents=task_docs,
             )
             context_chunks.append(
                 ContextChunk(
@@ -463,9 +494,10 @@ def _build_scope_filters(
     allowed_collection_ids: list[UUID],
     thread_document_ids: list[UUID],
 ) -> Any | None:
-    """Build OR filter for thread documents and allowed KB collections."""
+    """Build OR filter for task documents and allowed KB collections."""
     clauses: list[Any] = []
     if thread_document_ids:
+        clauses.append(DocumentChunk.task_document_id.in_(thread_document_ids))
         clauses.append(DocumentChunk.thread_document_id.in_(thread_document_ids))
     if allowed_collection_ids:
         clauses.append(DocumentChunk.collection_id.in_(allowed_collection_ids))
@@ -480,7 +512,12 @@ def _priority_level_for_chunk(
     thread_document_ids: list[UUID],
     collection_priority: dict[UUID, int],
 ) -> int:
-    """Map chunk to priority level 1–4 (thread → task → cluster → org collections)."""
+    """Map chunk to priority level 1–4 (task paper → task → cluster → org collections)."""
+    if (
+        chunk.task_document_id is not None
+        and chunk.task_document_id in thread_document_ids
+    ):
+        return 1
     if (
         chunk.thread_document_id is not None
         and chunk.thread_document_id in thread_document_ids
@@ -496,6 +533,7 @@ def _source_metadata_for_chunk(
     *,
     kb_documents: dict[UUID, KBDocument],
     thread_documents: dict[UUID, ThreadDocument],
+    task_documents: dict[UUID, TaskDocument],
 ) -> dict[str, Any]:
     """Build source document metadata for context assembly."""
     base: dict[str, Any] = {
@@ -516,6 +554,21 @@ def _source_metadata_for_chunk(
                     "s3_key": kb_doc.s3_key,
                     "collection_id": str(kb_doc.collection_id),
                     "collection_name": kb_doc.collection.name if kb_doc.collection else None,
+                },
+            )
+            return base
+
+    if chunk.task_document_id is not None:
+        task_doc = task_documents.get(chunk.task_document_id)
+        if task_doc is not None:
+            base.update(
+                {
+                    "source_type": "task_document",
+                    "task_document_id": str(task_doc.id),
+                    "filename": task_doc.filename,
+                    "file_type": task_doc.file_type,
+                    "s3_key": task_doc.s3_key,
+                    "load_strategy": task_doc.load_strategy.value,
                 },
             )
             return base

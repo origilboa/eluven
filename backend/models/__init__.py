@@ -11,6 +11,7 @@ from models.activity import (
 )
 from models.base import Base
 from models.cluster import Cluster
+from models.invitation import UserInvitation
 from models.instruction import (
     InstructionLevel,
     InstructionSet,
@@ -24,6 +25,7 @@ from models.kb import (
     KBCollectionAttachment,
     KBDocument,
     KBDocumentStatus,
+    TaskDocument,
     ThreadDocument,
     ThreadDocumentLoadStrategy,
 )
@@ -47,6 +49,7 @@ __all__ = [
     "Org",
     "User",
     "UserRole",
+    "UserInvitation",
     "Cluster",
     "Task",
     "TaskStatus",
@@ -66,6 +69,7 @@ __all__ = [
     "KBCollectionAttachment",
     "KBDocument",
     "KBDocumentStatus",
+    "TaskDocument",
     "ThreadDocument",
     "ThreadDocumentLoadStrategy",
     "DocumentChunk",
@@ -87,6 +91,7 @@ __all__ = [
     "ix_task_memory_entries_task_id_type",
     "ix_document_chunks_org_id_collection_id",
     "ix_document_chunks_thread_document_id",
+    "ix_document_chunks_task_document_id",
     "ix_kb_collection_attachments_entity",
     "ix_kb_collections_org_id_is_org_collection",
     "ix_instruction_sets_task_id",
@@ -107,6 +112,8 @@ __all__ = [
     "ix_workflow_executions_task_id_status",
     "ix_workflow_thread_executions_workflow_execution_id_status",
     "ix_workflow_interventions_workflow_execution_id",
+    "ix_user_invitations_org_id",
+    "ix_user_invitations_email",
 ]
 
 # Section 9.1 — Critical path (every AI call)
@@ -132,6 +139,10 @@ ix_document_chunks_org_id_collection_id = Index(
 ix_document_chunks_thread_document_id = Index(
     "ix_document_chunks_thread_document_id",
     DocumentChunk.thread_document_id,
+)
+ix_document_chunks_task_document_id = Index(
+    "ix_document_chunks_task_document_id",
+    DocumentChunk.task_document_id,
 )
 ix_kb_collection_attachments_entity = Index(
     "ix_kb_collection_attachments_entity",
@@ -217,6 +228,15 @@ ix_workflow_thread_executions_workflow_execution_id_status = Index(
 ix_workflow_interventions_workflow_execution_id = Index(
     "ix_workflow_interventions_workflow_execution_id",
     WorkflowIntervention.workflow_execution_id,
+)
+
+ix_user_invitations_org_id = Index(
+    "ix_user_invitations_org_id",
+    UserInvitation.org_id,
+)
+ix_user_invitations_email = Index(
+    "ix_user_invitations_email",
+    UserInvitation.email,
 )
 
 # HNSW index (ix_document_chunks_embedding_hnsw) is created via raw SQL in Alembic only.

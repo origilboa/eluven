@@ -6,6 +6,7 @@ import { signOut } from "next-auth/react";
 import { useMemo, useState } from "react";
 
 import { formatOrgLabel } from "@/lib/modules";
+import { isAdminRole } from "@/lib/admin-access";
 import type { UserResponse } from "@/lib/types/api";
 import type { Locale } from "@/i18n.config";
 
@@ -35,6 +36,7 @@ export function Sidebar({ locale, user }: SidebarProps) {
           assignments: "מטלות",
           kb: "מאגר ידע",
           instructionStudio: "סטודיו הוראות",
+          admin: "ניהול",
           collapse: "כווץ תפריט",
           expand: "הרחב תפריט",
           logout: "התנתקות",
@@ -44,35 +46,46 @@ export function Sidebar({ locale, user }: SidebarProps) {
           assignments: "Assignments",
           kb: "KB",
           instructionStudio: "Instruction Studio",
+          admin: "Admin",
           collapse: "Collapse sidebar",
           expand: "Expand sidebar",
           logout: "Log out",
         };
 
   const navItems: NavItem[] = useMemo(
-    () => [
-      {
-        href: `/${locale}/dashboard`,
-        label: copy.dashboard,
-        testId: "nav-dashboard",
-      },
-      {
-        href: `/${locale}/clusters`,
-        label: copy.assignments,
-        testId: "nav-clusters",
-      },
-      {
-        href: `/${locale}/kb`,
-        label: copy.kb,
-        testId: "nav-kb",
-      },
-      {
-        href: `/${locale}/instruction-studio`,
-        label: copy.instructionStudio,
-        testId: "nav-instruction-studio",
-      },
-    ],
-    [copy.assignments, copy.dashboard, copy.instructionStudio, copy.kb, locale],
+    () => {
+      const items: NavItem[] = [
+        {
+          href: `/${locale}/dashboard`,
+          label: copy.dashboard,
+          testId: "nav-dashboard",
+        },
+        {
+          href: `/${locale}/clusters`,
+          label: copy.assignments,
+          testId: "nav-clusters",
+        },
+        {
+          href: `/${locale}/kb`,
+          label: copy.kb,
+          testId: "nav-kb",
+        },
+        {
+          href: `/${locale}/instruction-studio`,
+          label: copy.instructionStudio,
+          testId: "nav-instruction-studio",
+        },
+      ];
+      if (isAdminRole(user.role)) {
+        items.push({
+          href: `/${locale}/admin`,
+          label: copy.admin,
+          testId: "nav-admin",
+        });
+      }
+      return items;
+    },
+    [copy.admin, copy.assignments, copy.dashboard, copy.instructionStudio, copy.kb, locale, user.role],
   );
 
   return (

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import mimetypes
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,15 @@ from api.access import get_owned_task
 from api.deps import get_current_active_user, get_db
 from core.logging import get_logger
 from models.cluster import Cluster
-from models.kb import KBCollection, KBCollectionAttachment, KBDocument, ThreadDocument
+from core.config import settings
+from models.kb import (
+    KBCollection,
+    KBCollectionAttachment,
+    KBDocument,
+    KBDocumentStatus,
+    TaskDocument,
+    ThreadDocumentLoadStrategy,
+)
 from models.memory import TaskMemoryEntry, TaskMemoryEntryType
 from models.task import Task, TaskStatus
 from models.thread import Thread
@@ -27,9 +36,11 @@ from schemas.tasks import (
     TaskResponse,
     UpdateTaskRequest,
 )
-from schemas.threads import TaskThreadDocumentResponse
-
+from schemas.threads import DocumentDownloadUrlResponse, TaskDocumentResponse
+from services.document.constants import SUPPORTED_FILE_TYPES
+from services.document_queue import enqueue_document_processing
 from services.export.word_exporter import build_task_word_export
+from services.storage import StorageService
 
 logger = get_logger(__name__)
 
@@ -307,41 +318,153 @@ async def _collection_document_count(session: AsyncSession, collection_id: UUID)
     return int(count or 0)
 
 
-@router.get("/{task_id}/documents", response_model=list[TaskThreadDocumentResponse])
+def _task_document_response(document: TaskDocument) -> TaskDocumentResponse:
+    return TaskDocumentResponse(
+        id=document.id,
+        filename=document.filename,
+        file_type=document.file_type,
+        size_bytes=document.size_bytes,
+        status=document.status.value,
+        load_strategy=document.load_strategy.value,
+        token_count=document.token_count,
+        created_at=document.created_at,
+    )
+
+
+def _file_type_from_filename(filename: str) -> str:
+    if "." not in filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename must include an extension",
+        )
+    extension = filename.rsplit(".", 1)[-1].lower()
+    if extension not in SUPPORTED_FILE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {extension}",
+        )
+    return extension
+
+
+def _content_type_for_file_type(file_type: str, filename: str) -> str:
+    guessed, _ = mimetypes.guess_type(filename)
+    return guessed or "application/octet-stream"
+
+
+async def _get_owned_task_document(
+    session: AsyncSession,
+    *,
+    task_id: UUID,
+    document_id: UUID,
+    user: User,
+) -> tuple[Task, TaskDocument]:
+    task = await get_owned_task(session, task_id, user)
+    document = await session.get(TaskDocument, document_id)
+    if document is None or document.task_id != task.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return task, document
+
+
+@router.post(
+    "/{task_id}/documents",
+    response_model=TaskDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_task_document(
+    task_id: UUID,
+    file: UploadFile,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TaskDocumentResponse:
+    """Upload a paper under review to a task and enqueue for processing."""
+    task = await get_owned_task(db, task_id, current_user)
+
+    filename = file.filename or "document"
+    file_type = _file_type_from_filename(filename)
+    file_bytes = await file.read()
+    size_bytes = len(file_bytes)
+
+    document_id = uuid4()
+    s3_key = f"{current_user.org_id}/tasks/{task_id}/{document_id}/{filename}"
+    content_type = _content_type_for_file_type(file_type, filename)
+
+    document = TaskDocument(
+        id=document_id,
+        task_id=task.id,
+        filename=filename,
+        s3_key=s3_key,
+        size_bytes=size_bytes,
+        file_type=file_type,
+        load_strategy=ThreadDocumentLoadStrategy.FULL_TEXT,
+        status=KBDocumentStatus.PENDING,
+        uploaded_by=current_user.id,
+    )
+    db.add(document)
+    await db.flush()
+
+    storage = StorageService()
+    storage.upload_file(file_bytes, s3_key, content_type)
+
+    logger.info(
+        "task_document_upload",
+        task_id=str(task_id),
+        document_id=str(document_id),
+        file_type=file_type,
+        size_bytes=size_bytes,
+    )
+
+    enqueue_document_processing(document_id, "task")
+    return _task_document_response(document)
+
+
+@router.get("/{task_id}/documents", response_model=list[TaskDocumentResponse])
 async def list_task_documents(
     task_id: UUID,
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> list[TaskThreadDocumentResponse]:
-    """List manuscript/submission documents across all threads in a task."""
+) -> list[TaskDocumentResponse]:
+    """List papers under review attached to a task."""
     await get_owned_task(db, task_id, current_user)
     result = await db.execute(
-        select(ThreadDocument, Thread)
-        .join(Thread, ThreadDocument.thread_id == Thread.id)
-        .where(
-            Thread.task_id == task_id,
-            Thread.org_id == current_user.org_id,
-        )
-        .order_by(ThreadDocument.created_at.desc()),
+        select(TaskDocument)
+        .where(TaskDocument.task_id == task_id)
+        .order_by(TaskDocument.created_at.desc()),
     )
-    rows = list(result.all())
-    logger.info("task_documents_listed", task_id=str(task_id), count=len(rows))
-    return [
-        TaskThreadDocumentResponse(
-            id=document.id,
-            filename=document.filename,
-            file_type=document.file_type,
-            size_bytes=document.size_bytes,
-            status=document.status.value,
-            load_strategy=document.load_strategy.value,
-            token_count=document.token_count,
-            created_at=document.created_at,
-            thread_id=thread.id,
-            thread_title=thread.title,
-            thread_type=thread.thread_type,
-        )
-        for document, thread in rows
-    ]
+    documents = list(result.scalars().all())
+    logger.info("task_documents_listed", task_id=str(task_id), count=len(documents))
+    return [_task_document_response(document) for document in documents]
+
+
+@router.get(
+    "/{task_id}/documents/{document_id}/download-url",
+    response_model=DocumentDownloadUrlResponse,
+)
+async def get_task_document_download_url(
+    task_id: UUID,
+    document_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> DocumentDownloadUrlResponse:
+    """Return a presigned URL to download a task document."""
+    _task, document = await _get_owned_task_document(
+        db,
+        task_id=task_id,
+        document_id=document_id,
+        user=current_user,
+    )
+    storage = StorageService()
+    url = storage.generate_presigned_url(document.s3_key)
+    expires_in = settings.s3_presigned_url_expiry_seconds
+    logger.info(
+        "task_document_download_url_issued",
+        task_id=str(task_id),
+        document_id=str(document_id),
+    )
+    return DocumentDownloadUrlResponse(
+        url=url,
+        filename=document.filename,
+        expires_in_seconds=expires_in,
+    )
 
 
 @router.get(
@@ -374,7 +497,7 @@ async def list_task_reference_collections(
             )
             .order_by(KBCollection.name.asc()),
         )
-        for _attachment, collection in attachment_result.all():
+        for attachment, collection in attachment_result.all():
             if collection.id in seen:
                 continue
             seen.add(collection.id)
@@ -382,6 +505,7 @@ async def list_task_reference_collections(
             responses.append(
                 TaskReferenceCollectionResponse(
                     id=collection.id,
+                    attachment_id=attachment.id,
                     name=collection.name,
                     description=collection.description,
                     document_count=doc_count,

@@ -27,7 +27,7 @@ Tracked after MVP completeness implementation. Resolve before external launch or
 6. **PDF/DOCX indexing in production** — **Decided + validated (ADR 002):** lightweight extractors deployed; txt, pdf, and docx fixtures pass `scripts/validate_mvp_kb_rag.py` on production (2026-06-02).
 7. **Rate limiting (10 AI calls/min)** — Spec §4; not implemented.
 8. **Concurrent workflow limit (3/user)** — Not enforced.
-9. ~~**Thread document upload UI**~~ — Task/thread document panels added (upload, list, download). See task detail **Paper under review** vs **Reference knowledge base**.
+9. ~~**Thread document upload UI**~~ — Task-level paper upload/list/download on task detail; KB attach/detach on task and KB pages. See task detail **Papers under review** vs **Reference knowledge base**.
 10. **Instruction Studio levels 4–5** — **Cluster + task UI added** on assignment detail and task detail pages; API at `/instructions/clusters/{id}` and `/instructions/tasks/{id}`. Instruction Studio global page still levels 1–3 only.
 11. **Task memory edit API/UI** — Read-only sidebar today.
 12. **RDS sizing** — `db.t3.micro` vs Aurora Serverless v2 (FinOps decision 15) before external launch.

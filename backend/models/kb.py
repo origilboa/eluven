@@ -15,6 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from models.base import Base, str_enum
 
 if TYPE_CHECKING:
+    from models.task import Task
     from models.thread import Thread
 
 
@@ -115,8 +116,34 @@ class KBDocument(Base):
     collection: Mapped[KBCollection] = relationship(back_populates="documents")
 
 
+class TaskDocument(Base):
+    """Manuscript or submission uploaded to a Task (paper under review)."""
+
+    __tablename__ = "task_documents"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    s3_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    file_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    token_count: Mapped[int | None] = mapped_column(nullable=True)
+    load_strategy: Mapped[ThreadDocumentLoadStrategy] = mapped_column(
+        str_enum(ThreadDocumentLoadStrategy),
+        nullable=False,
+    )
+    status: Mapped[KBDocumentStatus] = mapped_column(
+        str_enum(KBDocumentStatus),
+        default=KBDocumentStatus.PENDING,
+    )
+    uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    task: Mapped[Task] = relationship(back_populates="documents")
+
+
 class ThreadDocument(Base):
-    """Document uploaded directly to a Thread."""
+    """Document uploaded directly to a Thread (deprecated — use TaskDocument)."""
 
     __tablename__ = "thread_documents"
 
@@ -158,6 +185,10 @@ class DocumentChunk(Base):
     )
     thread_document_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("thread_documents.id"),
+        nullable=True,
+    )
+    task_document_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("task_documents.id"),
         nullable=True,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)

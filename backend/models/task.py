@@ -15,6 +15,7 @@ from models.base import Base, str_enum
 
 if TYPE_CHECKING:
     from models.cluster import Cluster
+    from models.kb import TaskDocument
     from models.memory import TaskMemoryEntry
     from models.thread import Thread
     from models.user import User
@@ -53,6 +54,7 @@ class Task(Base):
     owner: Mapped[User] = relationship(back_populates="tasks")
     cluster: Mapped[Cluster | None] = relationship(back_populates="tasks")
     threads: Mapped[list[Thread]] = relationship(back_populates="task")
+    documents: Mapped[list[TaskDocument]] = relationship(back_populates="task")
     memory_entries: Mapped[list[TaskMemoryEntry]] = relationship(back_populates="task")
 
 

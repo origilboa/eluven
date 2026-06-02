@@ -421,7 +421,10 @@ async def upload_thread_document(
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ThreadDocumentResponse:
-    """Upload a document to a thread and enqueue for processing."""
+    """Upload a document to a thread and enqueue for processing.
+
+    Deprecated: upload papers via POST /tasks/{task_id}/documents instead.
+    """
     thread = await get_owned_thread(db, thread_id, current_user)
 
     filename = file.filename or "document"

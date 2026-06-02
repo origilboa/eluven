@@ -15,7 +15,7 @@ from core.logging import get_logger
 
 logger = get_logger(__name__)
 
-DocumentType = Literal["kb", "thread"]
+DocumentType = Literal["kb", "thread", "task"]
 
 
 def get_document_processing_queue_url() -> str:

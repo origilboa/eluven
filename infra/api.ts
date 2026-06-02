@@ -51,6 +51,7 @@ export const api = new sst.aws.Service("Api", {
     AWS_REGION: aws.getRegionOutput().name,
     ENVIRONMENT: $app.stage,
     LOG_LEVEL: "INFO",
+    APP_BASE_URL: $app.stage === "production" ? "https://app.eluven.ai" : "http://localhost:3000",
     DEFAULT_BEDROCK_MODEL_ID: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
   },
   dev: {

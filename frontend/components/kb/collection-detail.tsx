@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 import { api } from "@/lib/api";
@@ -66,6 +67,7 @@ export function CollectionDetail({
   initialDocuments,
 }: CollectionDetailProps) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -79,6 +81,8 @@ export function CollectionDetail({
           empty: "אין מסמכים באוסף זה.",
           chunks: "קטעים",
           attachments: "צירופים",
+          detach: "הסר",
+          confirmDetach: "להסיר את הצירוף?",
           maxSize: "גודל מקסימלי: 50MB",
           formats: "PDF, Word, TXT, Excel, LaTeX",
         }
@@ -90,6 +94,8 @@ export function CollectionDetail({
           empty: "No documents in this collection yet.",
           chunks: "chunks",
           attachments: "Attachments",
+          detach: "Remove",
+          confirmDetach: "Remove this attachment?",
           maxSize: "Max size: 50MB",
           formats: "PDF, Word, TXT, Excel, LaTeX",
         };
@@ -120,6 +126,26 @@ export function CollectionDetail({
       setUploadError(mutationError.message);
     },
   });
+
+  const detachMutation = useMutation({
+    mutationFn: (attachmentId: string) =>
+      api.delete(`/kb/collections/${collection.id}/attach/${attachmentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["kb-collections"] });
+      queryClient.invalidateQueries({ queryKey: ["task-reference-collections"] });
+      router.refresh();
+    },
+    onError: (mutationError: Error) => {
+      window.alert(mutationError.message);
+    },
+  });
+
+  function handleDetach(attachmentId: string) {
+    if (!window.confirm(copy.confirmDetach)) {
+      return;
+    }
+    detachMutation.mutate(attachmentId);
+  }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -174,9 +200,17 @@ export function CollectionDetail({
             {collection.attachments.map((attachment) => (
               <span
                 key={attachment.id}
-                className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-950 dark:text-blue-300"
+                className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-950 dark:text-blue-300"
               >
                 {attachment.entity_name}
+                <button
+                  type="button"
+                  onClick={() => handleDetach(attachment.id)}
+                  disabled={detachMutation.isPending}
+                  className="text-blue-800 underline-offset-2 hover:underline dark:text-blue-200"
+                >
+                  {copy.detach}
+                </button>
               </span>
             ))}
           </div>

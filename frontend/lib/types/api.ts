@@ -175,6 +175,8 @@ export type ThreadDocumentResponse = {
   created_at: string;
 };
 
+export type TaskDocumentResponse = ThreadDocumentResponse;
+
 export type TaskThreadDocumentResponse = ThreadDocumentResponse & {
   thread_id: string;
   thread_title: string;
@@ -189,6 +191,7 @@ export type DocumentDownloadUrlResponse = {
 
 export type TaskReferenceCollectionResponse = {
   id: string;
+  attachment_id: string;
   name: string;
   description: string | null;
   document_count: number;
@@ -353,3 +356,85 @@ export type ActivateInstructionVersionRequest = {
 };
 
 export type InstructionLevel = "platform" | "org" | "user";
+
+export type AdminOrgResponse = {
+  id: string;
+  name: string;
+  slug: string;
+  is_active: boolean;
+  user_count: number;
+  is_platform_org: boolean;
+  created_at: string;
+};
+
+export type CreateOrgRequest = {
+  name: string;
+  slug?: string | null;
+};
+
+export type UpdateOrgRequest = {
+  name?: string | null;
+  slug?: string | null;
+  is_active?: boolean | null;
+};
+
+export type AdminUserResponse = {
+  id: string;
+  org_id: string;
+  org_name: string;
+  email: string;
+  name: string;
+  role: string;
+  is_active: boolean;
+  default_working_language: string;
+  last_login_at: string | null;
+  created_at: string;
+};
+
+export type UpdateAdminUserRequest = {
+  name?: string | null;
+  role?: string | null;
+  default_working_language?: string | null;
+  is_active?: boolean | null;
+};
+
+export type InvitationResponse = {
+  id: string;
+  org_id: string;
+  org_name: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  invited_by_name: string;
+  expires_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+};
+
+export type CreateInvitationRequest = {
+  email: string;
+  name: string;
+  role: string;
+  org_id?: string | null;
+};
+
+export type CreateInvitationResponse = {
+  invitation: InvitationResponse;
+  invite_url: string;
+};
+
+export type InvitationPreviewResponse = {
+  email: string;
+  name: string;
+  org_name: string;
+  role: string;
+  expires_at: string;
+  is_valid: boolean;
+};
+
+export type AcceptInviteRequest = {
+  token: string;
+  password: string;
+};

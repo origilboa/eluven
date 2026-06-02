@@ -45,3 +45,10 @@ class RefreshResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     refresh_token: str
+
+
+class AcceptInviteRequest(BaseModel):
+    """Accept an invitation and set account password."""
+
+    token: str = Field(min_length=32)
+    password: str = Field(min_length=8, max_length=128)

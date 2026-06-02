@@ -72,6 +72,7 @@ class TaskReferenceCollectionResponse(BaseModel):
     """KB collection linked to a task directly or via its cluster."""
 
     id: UUID
+    attachment_id: UUID
     name: str
     description: str | None
     document_count: int

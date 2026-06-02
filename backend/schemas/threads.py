@@ -82,6 +82,21 @@ class ThreadDocumentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TaskDocumentResponse(BaseModel):
+    """Task-attached document summary (paper under review)."""
+
+    id: UUID
+    filename: str
+    file_type: str
+    size_bytes: int
+    status: str
+    load_strategy: str
+    token_count: int | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class TaskThreadDocumentResponse(ThreadDocumentResponse):
     """Thread document with parent thread metadata for task-level listings."""
 

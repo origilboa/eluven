@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.logging import get_logger
-from models.kb import DocumentChunk, KBDocument, KBDocumentStatus, ThreadDocument, ThreadDocumentLoadStrategy
+from models.kb import DocumentChunk, KBDocument, KBDocumentStatus, TaskDocument, ThreadDocument, ThreadDocumentLoadStrategy
+from models.task import Task
 from models.thread import Thread
 from services.document.chunker import DocumentChunker
 from services.document.embedder import DocumentEmbedder
@@ -90,6 +91,7 @@ class DocumentProcessor:
                         collection_id=document.collection_id,
                         document_id=document.id,
                         thread_document_id=None,
+                        task_document_id=None,
                         content=chunk_data.content,
                         embedding=embedding,
                         chunk_index=chunk_data.chunk_index,
@@ -118,6 +120,112 @@ class DocumentProcessor:
             logger.exception(
                 "kb_document_process_failed",
                 document_id=str(document_id),
+                error=str(exc),
+            )
+            raise
+
+    async def process_task_document(
+        self,
+        task_document_id: UUID,
+        session: AsyncSession,
+    ) -> None:
+        """Process a task document using full-text or RAG strategy."""
+        task_document = await session.get(TaskDocument, task_document_id)
+        if task_document is None:
+            raise DocumentNotFoundError(f"TaskDocument not found: {task_document_id}")
+
+        task = await session.get(Task, task_document.task_id)
+        if task is None:
+            raise DocumentNotFoundError(f"Task not found: {task_document.task_id}")
+
+        logger.info(
+            "task_document_process_started",
+            task_document_id=str(task_document_id),
+            task_id=str(task_document.task_id),
+            file_type=task_document.file_type,
+        )
+
+        task_document.status = KBDocumentStatus.PROCESSING
+        await session.flush()
+
+        try:
+            file_bytes = await asyncio.to_thread(
+                self._storage.download_file,
+                task_document.s3_key,
+            )
+            extracted = await asyncio.to_thread(
+                self._extractor.extract,
+                file_bytes,
+                task_document.file_type,
+                task_document.filename,
+            )
+            token_count = self._chunker.count_tokens(extracted.text)
+            task_document.token_count = token_count
+
+            if token_count <= self._full_text_threshold:
+                task_document.load_strategy = ThreadDocumentLoadStrategy.FULL_TEXT
+                await session.execute(
+                    delete(DocumentChunk).where(
+                        DocumentChunk.task_document_id == task_document.id,
+                    ),
+                )
+                task_document.status = KBDocumentStatus.READY
+                logger.info(
+                    "task_document_process_full_text",
+                    task_document_id=str(task_document_id),
+                    token_count=token_count,
+                )
+                return
+
+            task_document.load_strategy = ThreadDocumentLoadStrategy.RAG
+            chunks_data = self._chunker.chunk(
+                extracted.text,
+                document_id=task_document.id,
+                collection_id=None,
+            )
+            embeddings = await asyncio.to_thread(
+                self._embedder.embed,
+                [chunk.content for chunk in chunks_data],
+            )
+
+            await session.execute(
+                delete(DocumentChunk).where(
+                    DocumentChunk.task_document_id == task_document.id,
+                ),
+            )
+
+            for chunk_data, embedding in zip(chunks_data, embeddings, strict=True):
+                session.add(
+                    DocumentChunk(
+                        org_id=task.org_id,
+                        collection_id=None,
+                        document_id=None,
+                        thread_document_id=None,
+                        task_document_id=task_document.id,
+                        content=chunk_data.content,
+                        embedding=embedding,
+                        chunk_index=chunk_data.chunk_index,
+                        token_count=chunk_data.token_count,
+                        metadata_={
+                            **chunk_data.metadata,
+                            "extraction": extracted.metadata,
+                            "tables_count": len(extracted.tables),
+                        },
+                    ),
+                )
+
+            task_document.status = KBDocumentStatus.READY
+            logger.info(
+                "task_document_process_rag_complete",
+                task_document_id=str(task_document_id),
+                token_count=token_count,
+                chunk_count=len(chunks_data),
+            )
+        except Exception as exc:
+            task_document.status = KBDocumentStatus.FAILED
+            logger.exception(
+                "task_document_process_failed",
+                task_document_id=str(task_document_id),
                 error=str(exc),
             )
             raise
@@ -199,6 +307,7 @@ class DocumentProcessor:
                         collection_id=None,
                         document_id=None,
                         thread_document_id=thread_document.id,
+                        task_document_id=None,
                         content=chunk_data.content,
                         embedding=embedding,
                         chunk_index=chunk_data.chunk_index,

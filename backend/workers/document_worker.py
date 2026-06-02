@@ -30,6 +30,7 @@ logger = get_logger(__name__)
 POLL_WAIT_SECONDS = 20
 DOCUMENT_TYPE_KB = "kb"
 DOCUMENT_TYPE_THREAD = "thread"
+DOCUMENT_TYPE_TASK = "task"
 
 
 async def _process_payload(payload: dict[str, Any]) -> None:
@@ -44,6 +45,8 @@ async def _process_payload(payload: dict[str, Any]) -> None:
                 await processor.process_kb_document(document_id, session)
             elif document_type == DOCUMENT_TYPE_THREAD:
                 await processor.process_thread_document(document_id, session)
+            elif document_type == DOCUMENT_TYPE_TASK:
+                await processor.process_task_document(document_id, session)
             else:
                 raise ValueError(f"Unknown document_type: {document_type}")
         except DocumentNotFoundError as exc:
