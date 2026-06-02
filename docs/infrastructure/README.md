@@ -12,27 +12,36 @@
 |---|---|---|
 | EC2 key pair | eluven-dev | Private key at ~/.ssh/eluven-dev |
 | Security group | sg-014bad2a06964d191 | SSH on port 22 |
-| EC2 instance | TBD — pending quota approval | t3.xlarge, Ubuntu 24 LTS |
+| EC2 instance | i-02e28fbb277628ada | t3.xlarge, Ubuntu 24 LTS |
+| Production app | https://app.eluven.ai | CloudFront + Lambda + ECS API |
+| RDS | eluven-production-databaseinstance-vmdmnvvm | db.t3.micro |
+| ECS cluster | eluven-production-EluvenClusterCluster-bcxhvdvx | Service: Api |
 
-## Dev server
+## Start / stop (save cost when not working)
 
-### Start
+Scripts live in **`scripts/infra/`**. See [scripts/infra/README.md](../../scripts/infra/README.md) for full detail.
+
+### One-time Mac setup
+
 ```bash
-eluven-start
+bash ~/eluven/scripts/infra/install-mac-aliases.sh >> ~/.zprofile
+source ~/.zprofile
 ```
-Starts the EC2, waits until ready, updates SSH config with current IP, SSHes in.
 
-### Check before stopping
-```bash
-eluven-check
-```
-Shows active sessions, CPU usage, running processes.
+Requires AWS CLI on your Mac.
 
-### Stop
-```bash
-eluven-stop
-```
-Runs check first, asks for confirmation, then stops the instance.
+### Daily use (from Mac Terminal)
+
+| Command | Action |
+|---|---|
+| `eluven-status` | Show EC2, ECS, RDS state |
+| `eluven-check` | Pre-stop check (git status on EC2, etc.) |
+| `eluven-stop` | Scale ECS to 0, stop RDS, stop EC2 |
+| `eluven-start` | Start EC2 + RDS + ECS, update SSH config, connect |
+
+**While stopped:** app.eluven.ai is down. VPC endpoints (~$50–60/mo) still bill.
+
+**RDS:** auto-restarts after 7 days if left stopped.
 
 ## Cost controls
 
@@ -52,20 +61,9 @@ Runs check first, asks for confirmation, then stops the instance.
 - **App name:** eluven
 - **Home:** aws
 - **Production removal:** retain (never auto-delete production resources)
+- **Deploy:** `npx sst deploy --stage production` (from EC2 ~/eluven)
 
 ## Secrets (AWS Secrets Manager)
-Set these before first deploy:
 - AnthropicApiKey
-- DatabasePassword  
+- DatabasePassword
 - NextAuthSecret
-
-## TODO — complete during infrastructure session
-- [ ] Launch EC2 (pending quota approval)
-- [ ] Install dev tools on EC2 (Node.js, Python, Poetry, pnpm)
-- [ ] Install OrbStack + PostgreSQL + pgvector on EC2
-- [ ] Clone repo on EC2
-- [ ] Configure AWS credentials on EC2
-- [ ] Initialise Alembic + first migration
-- [ ] Migrate eluven.ai DNS to Route 53
-- [ ] Provision SSL via ACM
-- [ ] Test SST dev mode
