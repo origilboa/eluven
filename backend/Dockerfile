@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-WORKDIR /app
+WORKDIR /app/backend
 
 # Application dependencies (from poetry.lock, excluding unstructured and its ML extras).
 RUN pip install --no-cache-dir \
@@ -70,7 +70,8 @@ RUN pip install --no-cache-dir "unstructured==${UNSTRUCTURED_VERSION}" --no-deps
 RUN mkdir -p /usr/local/nltk_data && \
     NLTK_DATA=/usr/local/nltk_data python -m nltk.downloader averaged_perceptron_tagger_eng punkt_tab
 
-COPY . .
+COPY backend/ .
+COPY scripts /app/scripts
 
 FROM python:3.12-slim AS runtime
 
@@ -90,13 +91,14 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     NLTK_DATA=/usr/local/nltk_data
 
-WORKDIR /app
+WORKDIR /app/backend
 
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /usr/local/nltk_data /usr/local/nltk_data
-COPY --from=builder /app /app
+COPY --from=builder /app/backend /app/backend
+COPY --from=builder /app/scripts /app/scripts
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "DATABASE_URL=$(echo $DATABASE_URL | sed s/postgresql+asyncpg/postgresql/) alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "DATABASE_URL=$(echo \"$DATABASE_URL\" | sed 's/postgresql+asyncpg/postgresql/') alembic upgrade head && python /app/scripts/seed.py --dev && uvicorn main:app --host 0.0.0.0 --port 8000"]

@@ -26,8 +26,8 @@ export const api = new sst.aws.Service("Api", {
     nextAuthSecret,
   ],
   image: {
-    context: "./backend",
-    dockerfile: "Dockerfile",
+    context: ".",
+    dockerfile: "backend/Dockerfile",
   },
   serviceRegistry: {
     port: 8000,
