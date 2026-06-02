@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -422,12 +422,12 @@ async def create_invitation(
     return response
 
 
-@router.delete("/invitations/{invitation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/invitations/{invitation_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 async def revoke_invitation(
     invitation_id: UUID,
     current_user: Annotated[User, Depends(get_org_admin_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> None:
+) -> Response:
     """Revoke a pending invitation."""
     invitation = await db.get(UserInvitation, invitation_id)
     if invitation is None:
@@ -441,7 +441,7 @@ async def revoke_invitation(
             detail="Accepted invitations cannot be revoked",
         )
     if invitation.revoked_at is not None:
-        return
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     invitation.revoked_at = datetime.now(UTC)
     await db.flush()
@@ -450,3 +450,4 @@ async def revoke_invitation(
         invitation_id=str(invitation.id),
         actor_id=str(current_user.id),
     )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
