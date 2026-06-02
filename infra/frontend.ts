@@ -12,6 +12,9 @@ export const frontend = new sst.aws.Nextjs("Frontend", {
   vpc,
   link: [api, nextAuthSecret],
   environment,
+  server: {
+    timeout: "60 seconds",
+  },
   dev: {
     command: "pnpm run dev",
     directory: "frontend",

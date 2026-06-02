@@ -206,6 +206,9 @@ class RAGRetriever:
         scope = await self._resolve_collection_scope(task, session)
         thread_document_ids = await self._rag_thread_document_ids(session, thread_id=thread.id)
 
+        if not scope.ordered_ids and not thread_document_ids:
+            return [], threshold
+
         query_embedding = await asyncio.to_thread(self._embedder.embed, [query])
         if not query_embedding:
             return [], threshold

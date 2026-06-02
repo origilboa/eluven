@@ -333,6 +333,8 @@ async def stream_ai_response(
                     yield _sse_line({"type": "error", "message": "Thread not found"})
                     return
 
+                yield _sse_line({"type": "status", "message": "Preparing response..."})
+
                 assembler = ContextAssembler()
                 client = AIClient()
 

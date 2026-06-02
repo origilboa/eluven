@@ -70,6 +70,9 @@ RUN pip install --no-cache-dir "unstructured==${UNSTRUCTURED_VERSION}" --no-deps
 RUN mkdir -p /usr/local/nltk_data && \
     NLTK_DATA=/usr/local/nltk_data python -m nltk.downloader averaged_perceptron_tagger_eng punkt_tab
 
+ENV TIKTOKEN_CACHE_DIR=/usr/local/tiktoken_cache
+RUN mkdir -p "$TIKTOKEN_CACHE_DIR" && python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+
 COPY backend/ .
 COPY scripts /app/scripts
 
@@ -89,13 +92,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    NLTK_DATA=/usr/local/nltk_data
+    NLTK_DATA=/usr/local/nltk_data \
+    TIKTOKEN_CACHE_DIR=/usr/local/tiktoken_cache
 
 WORKDIR /app/backend
 
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /usr/local/nltk_data /usr/local/nltk_data
+COPY --from=builder /usr/local/tiktoken_cache /usr/local/tiktoken_cache
 COPY --from=builder /app/backend /app/backend
 COPY --from=builder /app/scripts /app/scripts
 
