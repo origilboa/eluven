@@ -2,9 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ClusterDetailToolbar } from "@/components/clusters/cluster-detail-toolbar";
+import { ClusterInstructionPanel } from "@/components/instructions/cluster-instruction-panel";
 import { TaskCard } from "@/components/tasks/task-card";
 import { api, ApiError } from "@/lib/api";
 import { requireAuthSession } from "@/lib/auth-session";
+import { MODULE_TYPE_STUDENT_PAPER_REVIEW } from "@/lib/modules";
 import type { ClusterResponse, TaskResponse } from "@/lib/types/api";
 import { isLocale, type Locale } from "@/i18n.config";
 
@@ -65,6 +67,12 @@ export default async function ClusterDetailPage({ params }: ClusterDetailPagePro
         </div>
         <ClusterDetailToolbar locale={locale} clusterId={clusterId} />
       </div>
+
+      <ClusterInstructionPanel
+        locale={locale}
+        clusterId={clusterId}
+        moduleType={MODULE_TYPE_STUDENT_PAPER_REVIEW}
+      />
 
       <section className="space-y-4">
         <h2 className="text-start text-lg font-semibold text-zinc-900 dark:text-zinc-50">

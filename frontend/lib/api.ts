@@ -142,6 +142,14 @@ export const api = {
     return request<T>("PATCH", path, { ...options, body });
   },
 
+  put<T>(
+    path: string,
+    body?: unknown,
+    options?: { headers?: HeadersInit; accessToken?: string },
+  ) {
+    return request<T>("PUT", path, { ...options, body });
+  },
+
   delete<T>(path: string, options?: { headers?: HeadersInit; accessToken?: string }) {
     return request<T>("DELETE", path, options);
   },

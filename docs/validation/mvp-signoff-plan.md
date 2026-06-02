@@ -2,7 +2,7 @@
 
 **Last updated:** June 2026  
 **Production:** https://app.eluven.ai  
-**Related:** [open-questions.md](../open-questions.md) · [ADR 002](../adr/002-mvp-scope-decisions-june-2026.md)
+**Related:** [open-questions.md](../open-questions.md) · [ADR 002](../adr/002-mvp-scope-decisions-june-2026.md) · [sample-data.md](sample-data.md)
 
 This document defines what “MVP signed off” means, the work required to get there, and how each item is categorized (manual, coding, documentation, testing, ops).
 

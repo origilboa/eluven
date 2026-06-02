@@ -303,8 +303,23 @@ export type InstructionVersionResponse = {
 export type InstructionSetResponse = {
   id: string;
   level: string;
+  thread_type?: string | null;
+  cluster_id?: string | null;
+  task_id?: string | null;
   active_version: InstructionVersionResponse | null;
   versions: InstructionVersionResponse[];
+};
+
+export type TaskThreadTypeInstructionResponse = {
+  task_id: string;
+  thread_type: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UpsertTaskThreadTypeInstructionRequest = {
+  content: string;
 };
 
 export type CreateInstructionVersionRequest = {

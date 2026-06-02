@@ -208,6 +208,8 @@ Deploy from EC2: `npx sst deploy --stage production`
 ### Dev seed (production API startup)
 - `alembic upgrade head && python /app/scripts/seed.py --dev && uvicorn ...`
 - Dev user: dev@eluven.ai / devpassword123
+- Reviewer user (also created by `--dev`): reviewer@eluven.ai / reviewpassword123
+- Rich demo dataset: `python scripts/seed.py --demo` — see [sample-data.md](../validation/sample-data.md)
 
 ---
 

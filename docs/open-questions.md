@@ -2,7 +2,8 @@
 
 Tracked after MVP completeness implementation. Resolve before external launch or next major milestone.
 
-**MVP sign-off plan:** [validation/mvp-signoff-plan.md](validation/mvp-signoff-plan.md)
+**MVP sign-off plan:** [validation/mvp-signoff-plan.md](validation/mvp-signoff-plan.md)  
+**Demo sample data:** [validation/sample-data.md](validation/sample-data.md)
 
 ## Resolved (June 2026) — see [ADR 002](/docs/adr/002-mvp-scope-decisions-june-2026.md)
 
@@ -27,7 +28,7 @@ Tracked after MVP completeness implementation. Resolve before external launch or
 7. **Rate limiting (10 AI calls/min)** — Spec §4; not implemented.
 8. **Concurrent workflow limit (3/user)** — Not enforced.
 9. **Thread document upload UI** — Backend upload exists; no frontend.
-10. **Instruction Studio levels 4–5** — Cluster/task/thread instruction APIs partial; UI shows platform/org/user only.
+10. **Instruction Studio levels 4–5** — **Cluster + task UI added** on assignment detail and task detail pages; API at `/instructions/clusters/{id}` and `/instructions/tasks/{id}`. Instruction Studio global page still levels 1–3 only.
 11. **Task memory edit API/UI** — Read-only sidebar today.
 12. **RDS sizing** — `db.t3.micro` vs Aurora Serverless v2 (FinOps decision 15) before external launch.
 13. **CloudFront default URL** — May still resolve alongside `app.eluven.ai`; disable before external launch?

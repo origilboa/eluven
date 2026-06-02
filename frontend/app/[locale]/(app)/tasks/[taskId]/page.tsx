@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { TaskDetailToolbar } from "@/components/tasks/task-detail-toolbar";
+import { TaskInstructionPanel } from "@/components/instructions/task-instruction-panel";
 import { TaskMemoryPanel } from "@/components/tasks/task-memory-panel";
 import { ThreadList } from "@/components/threads/thread-list";
 import { WorkflowPanel } from "@/components/workflows/workflow-panel";
@@ -161,6 +162,11 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         </section>
 
         <div className="space-y-6">
+          <TaskInstructionPanel
+            locale={locale}
+            taskId={taskId}
+            moduleType={task.module_type}
+          />
           <TaskMemoryPanel locale={locale} memory={memory} />
           <WorkflowPanel locale={locale} taskId={taskId} moduleType={task.module_type} />
         </div>
