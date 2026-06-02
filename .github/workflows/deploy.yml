@@ -8,6 +8,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -36,14 +39,11 @@ jobs:
           poetry install
         working-directory: backend
 
-      - name: Run migrations
-        run: poetry run alembic upgrade head
-        working-directory: backend
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Migrations run inside the VPC on Api container startup (alembic upgrade head).
+      # GitHub-hosted runners cannot reach private RDS.
 
-      - name: Run all tests
-        run: poetry run pytest
+      - name: Run tests
+        run: poetry run pytest tests/unit tests/integration
         working-directory: backend
 
       - name: Install JS dependencies
@@ -51,6 +51,4 @@ jobs:
         working-directory: frontend
 
       - name: Deploy with SST
-        run: npx sst deploy --stage production
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: CI=true npx sst deploy --stage production

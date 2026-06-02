@@ -227,12 +227,14 @@ Deploy from EC2: `npx sst deploy --stage production`
 |---|---|---|
 | branch.yml | Push to non-main branches | Ruff, Pyright, pytest unit, ESLint, tsc, Jest |
 | pr.yml | PR to main | Above + integration tests |
-| deploy.yml | Push to main | Deploy via SST |
+| deploy.yml | Push to main | Unit + integration tests, SST deploy (OIDC → `eluven-github-deploy`) |
 
 ### GitHub Actions secrets
 | Secret | Purpose |
 |---|---|
 | AWS_DEPLOY_ROLE_ARN | arn:aws:iam::124871951150:role/eluven-github-deploy |
+
+Deploy workflow requires `permissions.id-token: write` for OIDC. Production schema migrations run on Api container startup (`alembic upgrade head`), not from GitHub runners (RDS is in a private VPC).
 
 ---
 
