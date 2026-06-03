@@ -44,6 +44,7 @@ export function ClusterReferenceCollectionsPanel({
           confirmDetach: "להסיר את הקישור למאגר זה?",
           cancel: "ביטול",
           documents: "מסמכים",
+          loadError: "לא ניתן לטעון מאגרי ידע. נסה לרענן את הדף.",
         }
       : {
           referenceTitle: "Reference knowledge base",
@@ -60,9 +61,13 @@ export function ClusterReferenceCollectionsPanel({
           confirmDetach: "Remove this collection from the assignment?",
           cancel: "Cancel",
           documents: "documents",
+          loadError: "Could not load reference collections. Try refreshing the page.",
         };
 
-  const { data: referenceCollections = [] } = useQuery({
+  const {
+    data: referenceCollections = [],
+    isError: referenceCollectionsError,
+  } = useQuery({
     queryKey: ["cluster-reference-collections", clusterId],
     queryFn: () =>
       api.get<ClusterReferenceCollectionResponse[]>(
@@ -148,7 +153,11 @@ export function ClusterReferenceCollectionsPanel({
       </div>
 
       <ul className="mt-4 space-y-2">
-        {referenceCollections.length === 0 ? (
+        {referenceCollectionsError ? (
+          <li className="text-start text-sm text-red-600 dark:text-red-400">
+            {copy.loadError}
+          </li>
+        ) : referenceCollections.length === 0 ? (
           <li className="text-start text-sm text-zinc-500 dark:text-zinc-400">
             {copy.noReferences}
           </li>

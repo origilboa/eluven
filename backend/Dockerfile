@@ -38,6 +38,8 @@ RUN pip install --no-cache-dir \
 ENV TIKTOKEN_CACHE_DIR=/usr/local/tiktoken_cache
 RUN mkdir -p "$TIKTOKEN_CACHE_DIR" && python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
+# Bust remote build cache when backend sources change.
+ARG BACKEND_CACHE_BUST=20260603
 COPY backend/ .
 COPY scripts /app/scripts
 
