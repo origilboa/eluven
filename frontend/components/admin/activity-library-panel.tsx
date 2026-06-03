@@ -343,7 +343,7 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
         </label>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
         <div className="rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
           {listQuery.isLoading ? (
             <p className="p-4 text-sm text-zinc-500">{copy.loading}</p>
