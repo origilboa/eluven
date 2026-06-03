@@ -13,14 +13,14 @@ from api.deps import get_app_admin_user, get_db
 from core.config import settings
 from core.logging import get_logger
 from core.platform import PLATFORM_ORG_ID
-from models.activity import ActivityLibraryEntry, QAStage, ThreadQAQuestion
+from models.activity import ActivityLibraryEntry, ActivityPrompt, PromptStage
 from models.user import User
 from schemas.admin_activity import (
     AdminActivityLibraryDetailResponse,
     AdminActivityLibraryEntryResponse,
-    AdminThreadQAQuestionResponse,
+    AdminActivityPromptResponse,
     CreateActivityLibraryEntryRequest,
-    ReplaceOpeningQuestionsRequest,
+    ReplaceActivityPromptsRequest,
     UpdateActivityLibraryEntryRequest,
 )
 
@@ -31,14 +31,11 @@ router = APIRouter(prefix="/admin/activity-library", tags=["admin-activity-libra
 _ALLOWED_MODULE_TYPES = frozenset({"external_paper_review", "student_paper_review"})
 
 
-async def _opening_question_count(db: AsyncSession, entry_id: UUID) -> int:
+async def _prompt_count(db: AsyncSession, entry_id: UUID) -> int:
     count = await db.scalar(
         select(func.count())
-        .select_from(ThreadQAQuestion)
-        .where(
-            ThreadQAQuestion.activity_entry_id == entry_id,
-            ThreadQAQuestion.stage == QAStage.OPENING,
-        ),
+        .select_from(ActivityPrompt)
+        .where(ActivityPrompt.activity_entry_id == entry_id),
     )
     return int(count or 0)
 
@@ -46,7 +43,7 @@ async def _opening_question_count(db: AsyncSession, entry_id: UUID) -> int:
 def _entry_response(
     entry: ActivityLibraryEntry,
     *,
-    opening_question_count: int,
+    prompt_count: int,
 ) -> AdminActivityLibraryEntryResponse:
     return AdminActivityLibraryEntryResponse(
         id=entry.id,
@@ -62,7 +59,7 @@ def _entry_response(
         token_budget_warning_threshold=entry.token_budget_warning_threshold,
         supports_automation=entry.supports_automation,
         default_instruction_content=entry.default_instruction_content,
-        opening_question_count=opening_question_count,
+        prompt_count=prompt_count,
         created_at=entry.created_at,
         updated_at=entry.updated_at,
     )
@@ -80,6 +77,14 @@ async def _get_platform_entry(db: AsyncSession, entry_id: UUID) -> ActivityLibra
     if entry is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Activity type not found")
     return entry
+
+
+def _validate_prompts_for_automation(entry: ActivityLibraryEntry, prompt_count: int) -> None:
+    if entry.supports_automation and prompt_count < 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Automated activity types require at least one activity prompt",
+        )
 
 
 @router.get("", response_model=list[AdminActivityLibraryEntryResponse])
@@ -108,8 +113,8 @@ async def list_admin_activity_library(
 
     responses: list[AdminActivityLibraryEntryResponse] = []
     for entry in entries:
-        count = await _opening_question_count(db, entry.id)
-        responses.append(_entry_response(entry, opening_question_count=count))
+        count = await _prompt_count(db, entry.id)
+        responses.append(_entry_response(entry, prompt_count=count))
 
     logger.info(
         "admin_activity_library_listed",
@@ -126,36 +131,27 @@ async def get_admin_activity_library_entry(
     _admin: Annotated[User, Depends(get_app_admin_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AdminActivityLibraryDetailResponse:
-    """Get activity type with opening Q&A questions."""
+    """Get activity type with activity prompts."""
     entry = await _get_platform_entry(db, entry_id)
 
-    questions_result = await db.execute(
-        select(ThreadQAQuestion)
-        .where(
-            ThreadQAQuestion.activity_entry_id == entry.id,
-            ThreadQAQuestion.stage == QAStage.OPENING,
-        )
-        .order_by(ThreadQAQuestion.sequence_index.asc()),
+    prompts_result = await db.execute(
+        select(ActivityPrompt)
+        .where(ActivityPrompt.activity_entry_id == entry.id)
+        .order_by(ActivityPrompt.sequence_index.asc()),
     )
-    questions = list(questions_result.scalars().all())
+    prompts = list(prompts_result.scalars().all())
 
-    base = _entry_response(
-        entry,
-        opening_question_count=len(questions),
-    )
+    base = _entry_response(entry, prompt_count=len(prompts))
     return AdminActivityLibraryDetailResponse(
         **base.model_dump(),
-        opening_questions=[
-            AdminThreadQAQuestionResponse(
-                id=question.id,
-                question_text=question.question_text,
-                stage=question.stage.value,
-                response_type=question.response_type.value,
-                options=question.options,
-                is_required=question.is_required,
-                sequence_index=question.sequence_index,
+        prompts=[
+            AdminActivityPromptResponse(
+                id=prompt.id,
+                prompt_text=prompt.prompt_text,
+                stage=prompt.stage.value,
+                sequence_index=prompt.sequence_index,
             )
-            for question in questions
+            for prompt in prompts
         ],
     )
 
@@ -232,6 +228,10 @@ async def update_admin_activity_library_entry(
     for field, value in updates.items():
         setattr(entry, field, value)
 
+    if entry.supports_automation:
+        count = await _prompt_count(db, entry.id)
+        _validate_prompts_for_automation(entry, count)
+
     await db.flush()
     logger.info(
         "admin_activity_library_updated",
@@ -242,39 +242,50 @@ async def update_admin_activity_library_entry(
     return await get_admin_activity_library_entry(entry_id, admin, db)
 
 
-@router.put("/{entry_id}/opening-questions", response_model=AdminActivityLibraryDetailResponse)
-async def replace_opening_questions(
+@router.put("/{entry_id}/prompts", response_model=AdminActivityLibraryDetailResponse)
+async def replace_activity_prompts(
     entry_id: UUID,
-    body: ReplaceOpeningQuestionsRequest,
+    body: ReplaceActivityPromptsRequest,
     admin: Annotated[User, Depends(get_app_admin_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AdminActivityLibraryDetailResponse:
-    """Replace all opening Q&A questions for an activity type."""
+    """Replace all activity prompts for an activity type."""
     entry = await _get_platform_entry(db, entry_id)
+    _validate_prompts_for_automation(entry, len(body.prompts))
 
     await db.execute(
-        delete(ThreadQAQuestion).where(
-            ThreadQAQuestion.activity_entry_id == entry.id,
-            ThreadQAQuestion.stage == QAStage.OPENING,
+        delete(ActivityPrompt).where(
+            ActivityPrompt.activity_entry_id == entry.id,
         ),
     )
 
-    for index, item in enumerate(body.questions):
+    for index, item in enumerate(body.prompts):
         db.add(
-            ThreadQAQuestion(
+            ActivityPrompt(
                 activity_entry_id=entry.id,
-                question_text=item.question_text.strip(),
-                stage=QAStage.OPENING,
-                is_required=item.is_required,
+                prompt_text=item.prompt_text.strip(),
+                stage=PromptStage.OPENING,
                 sequence_index=index,
             ),
         )
 
     await db.flush()
     logger.info(
-        "admin_activity_library_opening_questions_replaced",
+        "admin_activity_library_prompts_replaced",
         entry_id=str(entry_id),
-        question_count=len(body.questions),
+        prompt_count=len(body.prompts),
         user_id=str(admin.id),
     )
     return await get_admin_activity_library_entry(entry_id, admin, db)
+
+
+# Deprecated alias for existing clients
+@router.put("/{entry_id}/opening-questions", response_model=AdminActivityLibraryDetailResponse, include_in_schema=False)
+async def replace_opening_questions_alias(
+    entry_id: UUID,
+    body: ReplaceActivityPromptsRequest,
+    admin: Annotated[User, Depends(get_app_admin_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> AdminActivityLibraryDetailResponse:
+    """Deprecated alias for replace_activity_prompts."""
+    return await replace_activity_prompts(entry_id, body, admin, db)

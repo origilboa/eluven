@@ -29,6 +29,8 @@ export type TaskResponse = {
   cluster_id: string | null;
   working_language: string | null;
   context: Record<string, unknown> | null;
+  structured_tags: Record<string, unknown> | null;
+  freeform_tags: string[] | null;
   thread_count: number;
   created_at: string;
   updated_at: string;
@@ -40,6 +42,8 @@ export type CreateTaskRequest = {
   cluster_id?: string | null;
   working_language?: string | null;
   context?: Record<string, unknown> | null;
+  structured_tags?: Record<string, unknown> | null;
+  freeform_tags?: string[] | null;
 };
 
 export type TaskMemoryEntryResponse = {
@@ -66,6 +70,8 @@ export type ClusterResponse = {
   cluster_type: string;
   description: string | null;
   working_language: string | null;
+  structured_tags: Record<string, unknown> | null;
+  freeform_tags: string[] | null;
   task_count: number;
   created_at: string;
 };
@@ -75,6 +81,8 @@ export type CreateClusterRequest = {
   cluster_type: string;
   description?: string | null;
   working_language?: string | null;
+  structured_tags?: Record<string, unknown> | null;
+  freeform_tags?: string[] | null;
 };
 
 export type CreateThreadRequest = {
@@ -93,16 +101,6 @@ export type ActivityLibraryEntryResponse = {
   default_model_id: string;
   token_budget: number | null;
   supports_automation: boolean;
-};
-
-export type SubmitQARequest = {
-  responses: QAResponseRequest[];
-};
-
-export type QAResponseRequest = {
-  question_id: string;
-  response_text?: string | null;
-  response_options?: string[] | null;
 };
 
 export type StreamStatusEvent = {
@@ -208,17 +206,12 @@ export type ClusterReferenceCollectionResponse = {
   created_at: string;
 };
 
-export type QAQuestionResponse = {
+export type ThreadPromptResponse = {
   id: string;
-  question_text: string;
+  prompt_text: string;
   stage: string;
-  response_type: string;
-  options: string[] | null;
-  is_required: boolean;
   sequence_index: number;
-  response_text: string | null;
-  response_options: string[] | null;
-  responded_at: string | null;
+  used_at: string | null;
 };
 
 export type WorkflowTemplateResponse = {
@@ -239,6 +232,8 @@ export type CreateSubmissionRequest = {
   title: string;
   working_language?: string | null;
   context?: Record<string, unknown> | null;
+  structured_tags?: Record<string, unknown> | null;
+  freeform_tags?: string[] | null;
 };
 
 export type WorkflowThreadExecutionResponse = {
@@ -437,13 +432,10 @@ export type AcceptInviteRequest = {
   password: string;
 };
 
-export type AdminThreadQAQuestionResponse = {
+export type AdminActivityPromptResponse = {
   id: string;
-  question_text: string;
+  prompt_text: string;
   stage: string;
-  response_type: string;
-  options: string[] | null;
-  is_required: boolean;
   sequence_index: number;
 };
 
@@ -461,13 +453,13 @@ export type AdminActivityLibraryEntryResponse = {
   token_budget_warning_threshold: number;
   supports_automation: boolean;
   default_instruction_content: string | null;
-  opening_question_count: number;
+  prompt_count: number;
   created_at: string;
   updated_at: string;
 };
 
 export type AdminActivityLibraryDetailResponse = AdminActivityLibraryEntryResponse & {
-  opening_questions: AdminThreadQAQuestionResponse[];
+  prompts: AdminActivityPromptResponse[];
 };
 
 export type CreateActivityLibraryEntryRequest = {
@@ -496,12 +488,10 @@ export type UpdateActivityLibraryEntryRequest = {
   is_active?: boolean;
 };
 
-export type UpsertOpeningQAQuestionRequest = {
-  question_text: string;
-  is_required?: boolean;
-  sequence_index?: number;
+export type UpsertActivityPromptRequest = {
+  prompt_text: string;
 };
 
-export type ReplaceOpeningQuestionsRequest = {
-  questions: UpsertOpeningQAQuestionRequest[];
+export type ReplaceActivityPromptsRequest = {
+  prompts: UpsertActivityPromptRequest[];
 };

@@ -10,7 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from core.logging import get_logger
-from models.activity import ActivityLibraryEntry
+from models.activity import ActivityLibraryEntry, ActivityPrompt
 from models.task import Task
 from models.thread import Thread, ThreadStatus
 from models.workflow import (
@@ -238,60 +238,83 @@ class WorkflowEngine:
 
         thread = await self._resolve_thread(session, execution, thread_execution, task)
         activity = await self._activity_entry(session, task, thread_execution.thread_type)
+        prompts = await self._activity_prompts(session, activity)
+        if activity is not None and activity.supports_automation and not prompts:
+            raise WorkflowEngineError(
+                f"Activity type {thread_execution.thread_type} has no prompts for automation",
+            )
+
         intervention_response = await self._answered_intervention_response(
             session,
             thread_execution.id,
         )
-        message = self._automation_message(activity, intervention_response)
 
         memory_payloads: list[TaskMemoryEntryPayload] = []
         tokens_used = 0
+        start_index = thread_execution.completed_prompt_count
 
-        async for chunk in self._ai_client.stream(
-            thread,
-            task,
-            message,
-            session,
-            workflow_id=execution.id,
-        ):
-            if isinstance(chunk, dict):
-                if chunk.get("type") == "done":
-                    tokens_used = int(chunk.get("input_tokens", 0)) + int(
-                        chunk.get("output_tokens", 0),
-                    )
-                elif chunk.get("type") == "memory_entry":
-                    entry_data = chunk.get("entry", {})
-                    try:
-                        entry_type = entry_data.get("entry_type") or entry_data.get("type")
-                        content = entry_data.get("content")
-                        if entry_type and content:
-                            memory_payloads.append(
-                                TaskMemoryEntryPayload.model_validate(
-                                    {
-                                        "type": entry_type,
-                                        "content": content,
-                                        "confidence": entry_data.get("confidence"),
-                                    },
-                                ),
-                            )
-                    except Exception:
-                        pass
+        if not prompts:
+            prompts_messages = [self._automation_message(activity, intervention_response)]
+        else:
+            prompts_messages = []
+            for index in range(start_index, len(prompts)):
+                message = prompts[index].prompt_text
+                if index == start_index and intervention_response:
+                    message = f"{message}\n\nUser clarification:\n{intervention_response}"
+                prompts_messages.append(message)
 
-        await session.refresh(thread)
-        assistant_text = await self._latest_assistant_content(session, thread.id)
-        detected = detect_intervention(
-            assistant_text,
-            memory_payloads=memory_payloads,
-        )
+        for offset, message in enumerate(prompts_messages):
+            prompt_index = start_index + offset if prompts else 0
+            async for chunk in self._ai_client.stream(
+                thread,
+                task,
+                message,
+                session,
+                workflow_id=execution.id,
+            ):
+                if isinstance(chunk, dict):
+                    if chunk.get("type") == "done":
+                        tokens_used += int(chunk.get("input_tokens", 0)) + int(
+                            chunk.get("output_tokens", 0),
+                        )
+                    elif chunk.get("type") == "memory_entry":
+                        entry_data = chunk.get("entry", {})
+                        try:
+                            entry_type = entry_data.get("entry_type") or entry_data.get("type")
+                            content = entry_data.get("content")
+                            if entry_type and content:
+                                memory_payloads.append(
+                                    TaskMemoryEntryPayload.model_validate(
+                                        {
+                                            "type": entry_type,
+                                            "content": content,
+                                            "confidence": entry_data.get("confidence"),
+                                        },
+                                    ),
+                                )
+                        except Exception:
+                            pass
 
-        if detected is not None:
-            await self._pause_for_intervention(
-                session=session,
-                execution=execution,
-                thread_execution=thread_execution,
-                detected=detected,
+            await session.refresh(thread)
+            assistant_text = await self._latest_assistant_content(session, thread.id)
+            detected = detect_intervention(
+                assistant_text,
+                memory_payloads=memory_payloads,
             )
-            return
+
+            if detected is not None:
+                thread_execution.completed_prompt_count = prompt_index
+                await self._pause_for_intervention(
+                    session=session,
+                    execution=execution,
+                    thread_execution=thread_execution,
+                    detected=detected,
+                )
+                return
+
+            if prompts:
+                thread_execution.completed_prompt_count = prompt_index + 1
+                await session.flush()
 
         await self._complete_thread_step(
             session=session,
@@ -510,6 +533,20 @@ class WorkflowEngine:
             .limit(1),
         )
         return result.scalar_one_or_none()
+
+    async def _activity_prompts(
+        self,
+        session: AsyncSession,
+        activity: ActivityLibraryEntry | None,
+    ) -> list[ActivityPrompt]:
+        if activity is None:
+            return []
+        result = await session.execute(
+            select(ActivityPrompt)
+            .where(ActivityPrompt.activity_entry_id == activity.id)
+            .order_by(ActivityPrompt.sequence_index.asc()),
+        )
+        return list(result.scalars().all())
 
     async def _latest_assistant_content(
         self,

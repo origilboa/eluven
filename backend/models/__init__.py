@@ -4,10 +4,10 @@ from sqlalchemy import Index
 
 from models.activity import (
     ActivityLibraryEntry,
-    QAResponseType,
+    ActivityPrompt,
+    PromptStage,
     QAStage,
-    ThreadQAQuestion,
-    ThreadQAResponse,
+    ThreadPromptUsage,
 )
 from models.base import Base
 from models.cluster import Cluster
@@ -81,10 +81,10 @@ __all__ = [
     "WorkflowThreadStatus",
     "InterventionTriggerType",
     "ActivityLibraryEntry",
-    "ThreadQAQuestion",
-    "ThreadQAResponse",
+    "ActivityPrompt",
+    "ThreadPromptUsage",
+    "PromptStage",
     "QAStage",
-    "QAResponseType",
     # Section 9 indexes
     "ix_thread_messages_thread_id_created_at",
     "ix_task_memory_entries_task_id",
@@ -100,7 +100,7 @@ __all__ = [
     "ix_instruction_sets_org_id",
     "ix_instruction_sets_thread_id",
     "ix_task_thread_type_instructions_task_id_thread_type",
-    "ix_thread_qa_responses_thread_id",
+    "ix_thread_prompt_usage_thread_id",
     "ix_tasks_owner_id_status",
     "ix_tasks_cluster_id",
     "ix_threads_task_id_status",
@@ -180,9 +180,9 @@ ix_task_thread_type_instructions_task_id_thread_type = Index(
     TaskThreadTypeInstruction.task_id,
     TaskThreadTypeInstruction.thread_type,
 )
-ix_thread_qa_responses_thread_id = Index(
-    "ix_thread_qa_responses_thread_id",
-    ThreadQAResponse.thread_id,
+ix_thread_prompt_usage_thread_id = Index(
+    "ix_thread_prompt_usage_thread_id",
+    ThreadPromptUsage.thread_id,
 )
 
 # Section 9.2 — Dashboard and navigation

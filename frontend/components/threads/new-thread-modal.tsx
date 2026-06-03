@@ -5,11 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 
 import { api } from "@/lib/api";
-import { hasPendingOpeningQA } from "@/lib/threads";
 import type {
   ActivityLibraryEntryResponse,
   CreateThreadRequest,
-  QAQuestionResponse,
   ThreadResponse,
 } from "@/lib/types/api";
 import type { Locale } from "@/i18n.config";
@@ -110,13 +108,6 @@ export function NewThreadModal({
     onSuccess: async (thread) => {
       await queryClient.invalidateQueries({ queryKey: ["threads", taskId] });
       onClose();
-
-      const qaQuestions = await api.get<QAQuestionResponse[]>(`/threads/${thread.id}/qa`);
-      if (hasPendingOpeningQA(qaQuestions)) {
-        router.push(`/${locale}/tasks/${taskId}/threads/${thread.id}/qa`);
-        return;
-      }
-
       router.push(`/${locale}/tasks/${taskId}/threads/${thread.id}`);
       router.refresh();
     },

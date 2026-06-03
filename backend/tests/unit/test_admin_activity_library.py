@@ -68,7 +68,7 @@ def test_entry_response_maps_fields() -> None:
     entry.default_instruction_content = "Review the paper."
     entry.created_at = entry.updated_at = MagicMock()
 
-    response = admin_al._entry_response(entry, opening_question_count=3)
+    response = admin_al._entry_response(entry, prompt_count=3)
     assert response.thread_type == "initial_read"
-    assert response.opening_question_count == 3
+    assert response.prompt_count == 3
     assert response.default_instruction_content == "Review the paper."

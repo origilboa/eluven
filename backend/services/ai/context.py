@@ -16,7 +16,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from core.logging import get_logger
-from models.activity import ThreadQAQuestion, ThreadQAResponse
 from models.instruction import InstructionLevel, InstructionSet, InstructionVersion
 from models.kb import KBDocumentStatus, TaskDocument, ThreadDocumentLoadStrategy
 from models.memory import TaskMemoryEntry, TaskMemoryEntryType
@@ -25,7 +24,7 @@ from models.thread import MessageRole, Thread, ThreadMessage
 from models.user import User
 from services.document.chunker import DocumentChunker
 from services.rag.retriever import ContextChunk, RAGRetriever
-from services.storage import StorageService
+from services.tags.context_tags import format_merged_tags_block, load_merged_tags_for_task
 
 if TYPE_CHECKING:
     from services.document.extractor import DocumentExtractor
@@ -152,16 +151,21 @@ class ContextAssembler:
         memory_block = await self._task_memory_block(session, task.id)
         thread_docs_block = await self._task_documents_block(session, task)
         rag_block = await self._rag_block(session, message, task.id, thread.id)
-        qa_block = await self._qa_responses_block(session, thread.id)
+        assignment_tags, task_tags, freeform_tags = await load_merged_tags_for_task(session, task)
+        tags_block = format_merged_tags_block(
+            assignment_tags=assignment_tags,
+            task_tags=task_tags,
+            freeform_tags=freeform_tags,
+        )
 
         context_blocks = [
             block
             for block in (
                 _task_context_block(task),
+                tags_block,
                 memory_block,
                 thread_docs_block,
                 rag_block,
-                qa_block,
             )
             if block
         ]
@@ -327,26 +331,6 @@ class ContextAssembler:
         if not chunks:
             return ""
         return _format_rag_chunks(chunks)
-
-    async def _qa_responses_block(self, session: AsyncSession, thread_id: UUID) -> str:
-        result = await session.execute(
-            select(ThreadQAResponse, ThreadQAQuestion)
-            .join(
-                ThreadQAQuestion,
-                ThreadQAResponse.question_id == ThreadQAQuestion.id,
-            )
-            .where(ThreadQAResponse.thread_id == thread_id),
-        )
-        rows = list(result.all())
-        if not rows:
-            return ""
-
-        lines = ["## Q&A responses"]
-        for response, question in rows:
-            question_text = question.question_text
-            answer = response.response_text or ", ".join(response.response_options or [])
-            lines.append(f"**Q:** {question_text}\n**A:** {answer}")
-        return "\n\n".join(lines)
 
     async def _conversation_history(
         self,

@@ -22,6 +22,6 @@ class ActivityLibraryEntryResponse(BaseModel):
 
 
 class ActivityLibraryDetailResponse(ActivityLibraryEntryResponse):
-    """Thread type with opening Q&A question count."""
+    """Thread type with activity prompt count."""
 
-    opening_question_count: int = 0
+    prompt_count: int = 0

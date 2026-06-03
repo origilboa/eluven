@@ -4,8 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 
+import { EntityTagsEditor } from "@/components/tags/entity-tags-editor";
 import { api } from "@/lib/api";
-import { MODULE_DEFINITIONS, type ModuleType } from "@/lib/modules";
+import { MODULE_DEFINITIONS, MODULE_TYPE_EXTERNAL_PAPER_REVIEW, type ModuleType } from "@/lib/modules";
+import { parseFreeformTags } from "@/lib/tags";
 import type { ClusterResponse, CreateTaskRequest, TaskResponse } from "@/lib/types/api";
 import type { Locale } from "@/i18n.config";
 
@@ -21,6 +23,8 @@ type CreateTaskFormState = {
   module_type: ModuleType;
   working_language: "en" | "he";
   cluster_id: string;
+  structured_tags: Record<string, string>;
+  freeform_tags: string;
 };
 
 const defaultFormState: CreateTaskFormState = {
@@ -28,7 +32,17 @@ const defaultFormState: CreateTaskFormState = {
   module_type: "external_paper_review",
   working_language: "en",
   cluster_id: "",
+  structured_tags: {},
+  freeform_tags: "",
 };
+
+const EPR_TAG_FIELDS = [
+  { key: "venue", label: "Venue / journal" },
+  { key: "review_deadline", label: "Review deadline" },
+  { key: "decision_context", label: "Decision context" },
+  { key: "reporting_standard", label: "Reporting standard" },
+  { key: "review_type", label: "Review type" },
+] as const;
 
 export function NewTaskModal({
   locale,
@@ -119,6 +133,19 @@ export function NewTaskModal({
       working_language: form.working_language,
       cluster_id: form.cluster_id ? form.cluster_id : null,
     };
+
+    if (form.module_type === MODULE_TYPE_EXTERNAL_PAPER_REVIEW) {
+      const structuredTags = Object.fromEntries(
+        Object.entries(form.structured_tags).filter(([, value]) => value.trim()),
+      );
+      if (Object.keys(structuredTags).length > 0) {
+        payload.structured_tags = structuredTags;
+      }
+      const freeformTags = parseFreeformTags(form.freeform_tags);
+      if (freeformTags.length > 0) {
+        payload.freeform_tags = freeformTags;
+      }
+    }
 
     createTaskMutation.mutate(payload);
   }
@@ -238,6 +265,24 @@ export function NewTaskModal({
               <p className="text-xs text-zinc-500">{copy.loadClusters}</p>
             ) : null}
           </div>
+
+          {form.module_type === MODULE_TYPE_EXTERNAL_PAPER_REVIEW ? (
+            <EntityTagsEditor
+              locale={locale}
+              structuredTags={form.structured_tags}
+              freeformTags={form.freeform_tags}
+              onStructuredTagsChange={(structured_tags) =>
+                setForm((current) => ({ ...current, structured_tags }))
+              }
+              onFreeformTagsChange={(freeform_tags) =>
+                setForm((current) => ({ ...current, freeform_tags }))
+              }
+              structuredFields={EPR_TAG_FIELDS.map((field) => ({
+                key: field.key,
+                label: field.label,
+              }))}
+            />
+          ) : null}
 
           {error ? (
             <p

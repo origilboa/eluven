@@ -9,8 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logging import get_logger
 from core.security import hash_password
-from models.activity import ActivityLibraryEntry, QAStage, ThreadQAQuestion, ThreadQAResponse
-from services.instructions.thread_instructions import create_thread_instruction_set
 from models.cluster import Cluster
 from models.invitation import UserInvitation
 from models.kb import KBCollection, KBCollectionAttachment
@@ -19,6 +17,7 @@ from models.org import Org
 from models.task import Task, TaskStatus
 from models.thread import MessageRole, Thread, ThreadMessage, ThreadStatus
 from models.user import User, UserRole
+from services.instructions.thread_instructions import create_thread_instruction_set
 from models.workflow import (
     InterventionTriggerType,
     WorkflowExecution,
@@ -112,6 +111,13 @@ async def seed_demo_async(session: AsyncSession) -> None:
         module_type=MVP_MODULE_EPR,
         status=TaskStatus.ACTIVE,
         description="Active review with threads, task memory, and attached KB collection.",
+        structured_tags={
+            "venue": "Nature Methods",
+            "review_deadline": "2026-06-15",
+            "decision_context": "Major revision likely",
+            "reporting_standard": "CONSORT",
+        },
+        freeform_tags=["methods-heavy"],
     )
 
     epr_hebrew = await _get_or_create_task(
@@ -152,6 +158,12 @@ async def seed_demo_async(session: AsyncSession) -> None:
         name=f"{_DEMO_MARKER}Assignment — Research Methods 101",
         cluster_type="assignment",
         description="Sample assignment with two student submissions.",
+        structured_tags={
+            "course_level": "undergraduate",
+            "discipline": "History",
+            "rubric_summary": "Analysis 40%, Writing 30%, Argument 30%",
+            "feedback_tone": "constructive",
+        },
     )
 
     spr_alice = await _get_or_create_task(
@@ -163,6 +175,11 @@ async def seed_demo_async(session: AsyncSession) -> None:
         status=TaskStatus.ACTIVE,
         cluster_id=assignment.id,
         description="In-progress student submission with an active evaluation thread.",
+        structured_tags={
+            "student_name": "Alice Chen",
+            "submitted_at": "2026-05-28",
+            "is_late": "false",
+        },
     )
 
     await _get_or_create_task(
@@ -188,15 +205,6 @@ async def seed_demo_async(session: AsyncSession) -> None:
     )
 
     await _seed_epr_threads_and_memory(session, org=org, owner=dev_user, task=epr_active)
-    initial_read = await session.execute(
-        select(Thread).where(
-            Thread.task_id == epr_active.id,
-            Thread.thread_type == "initial_read",
-        ),
-    )
-    initial_read_thread = initial_read.scalar_one_or_none()
-    if initial_read_thread is not None:
-        await _seed_opening_qa_responses(session, thread=initial_read_thread)
 
     await _seed_spr_thread(session, org=org, owner=dev_user, task=spr_alice)
     kb_collection = await _seed_kb_collection(
@@ -324,6 +332,8 @@ async def _get_or_create_task(
     description: str | None = None,
     working_language: str | None = None,
     cluster_id: UUID | None = None,
+    structured_tags: dict[str, str] | None = None,
+    freeform_tags: list[str] | None = None,
 ) -> Task:
     result = await session.execute(
         select(Task).where(Task.owner_id == owner.id, Task.title == title),
@@ -341,6 +351,8 @@ async def _get_or_create_task(
         module_type=module_type,
         status=status,
         working_language=working_language,
+        structured_tags=structured_tags,
+        freeform_tags=freeform_tags,
     )
     session.add(task)
     await session.flush()
@@ -356,6 +368,8 @@ async def _get_or_create_cluster(
     name: str,
     cluster_type: str,
     description: str | None = None,
+    structured_tags: dict[str, str] | None = None,
+    freeform_tags: list[str] | None = None,
 ) -> Cluster:
     result = await session.execute(
         select(Cluster).where(Cluster.owner_id == owner.id, Cluster.name == name),
@@ -370,6 +384,8 @@ async def _get_or_create_cluster(
         name=name,
         description=description,
         cluster_type=cluster_type,
+        structured_tags=structured_tags,
+        freeform_tags=freeform_tags,
     )
     session.add(cluster)
     await session.flush()
@@ -716,56 +732,6 @@ async def _seed_kb_collection(
     )
     await session.flush()
     return collection
-
-
-async def _seed_opening_qa_responses(
-    session: AsyncSession,
-    *,
-    thread: Thread,
-) -> None:
-    task = await session.get(Task, thread.task_id)
-    if task is None:
-        return
-
-    questions_result = await session.execute(
-        select(ThreadQAQuestion)
-        .join(
-            ActivityLibraryEntry,
-            ThreadQAQuestion.activity_entry_id == ActivityLibraryEntry.id,
-        )
-        .where(
-            ActivityLibraryEntry.thread_type == thread.thread_type,
-            ActivityLibraryEntry.module_type == task.module_type,
-            ThreadQAQuestion.stage == QAStage.OPENING,
-        )
-        .order_by(ThreadQAQuestion.sequence_index.asc())
-        .limit(1),
-    )
-    question = questions_result.scalar_one_or_none()
-    if question is None:
-        return
-
-    existing = await session.execute(
-        select(ThreadQAResponse.id).where(
-            ThreadQAResponse.thread_id == thread.id,
-            ThreadQAResponse.question_id == question.id,
-        ),
-    )
-    if existing.scalar_one_or_none() is not None:
-        return
-
-    session.add(
-        ThreadQAResponse(
-            thread_id=thread.id,
-            question_id=question.id,
-            response_text=(
-                "Proceed with a standard external review. Focus on methods validity first, "
-                "then contribution and clarity."
-            ),
-        ),
-    )
-    await session.flush()
-    logger.info("seed_demo_qa_response_created", thread_id=str(thread.id))
 
 
 async def _seed_pending_invitation(

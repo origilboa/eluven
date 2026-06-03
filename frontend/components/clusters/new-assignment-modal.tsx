@@ -4,7 +4,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 
+import { EntityTagsEditor } from "@/components/tags/entity-tags-editor";
 import { api } from "@/lib/api";
+import { parseFreeformTags } from "@/lib/tags";
 import type { ClusterResponse, CreateClusterRequest } from "@/lib/types/api";
 import type { Locale } from "@/i18n.config";
 
@@ -21,6 +23,8 @@ export function NewAssignmentModal({ locale, open, onClose }: NewAssignmentModal
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [workingLanguage, setWorkingLanguage] = useState<"en" | "he">("en");
+  const [structuredTags, setStructuredTags] = useState<Record<string, string>>({});
+  const [freeformTags, setFreeformTags] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const copy =
@@ -55,6 +59,8 @@ export function NewAssignmentModal({ locale, open, onClose }: NewAssignmentModal
     setName("");
     setDescription("");
     setWorkingLanguage("en");
+    setStructuredTags({});
+    setFreeformTags("");
     setError(null);
   }, [open]);
 
@@ -84,6 +90,10 @@ export function NewAssignmentModal({ locale, open, onClose }: NewAssignmentModal
       cluster_type: "assignment",
       description: description.trim() || null,
       working_language: workingLanguage,
+      structured_tags: Object.fromEntries(
+        Object.entries(structuredTags).filter(([, value]) => value.trim()),
+      ),
+      freeform_tags: parseFreeformTags(freeformTags),
     });
   }
 
@@ -145,6 +155,21 @@ export function NewAssignmentModal({ locale, open, onClose }: NewAssignmentModal
               <option value="he">{copy.hebrew}</option>
             </select>
           </div>
+
+          <EntityTagsEditor
+            locale={locale}
+            structuredTags={structuredTags}
+            freeformTags={freeformTags}
+            onStructuredTagsChange={setStructuredTags}
+            onFreeformTagsChange={setFreeformTags}
+            structuredFields={[
+              { key: "rubric_summary", label: "Rubric summary" },
+              { key: "course_level", label: "Course level" },
+              { key: "discipline", label: "Discipline" },
+              { key: "assignment_brief_summary", label: "Assignment brief summary" },
+              { key: "feedback_tone", label: "Feedback tone" },
+            ]}
+          />
 
           {error ? (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

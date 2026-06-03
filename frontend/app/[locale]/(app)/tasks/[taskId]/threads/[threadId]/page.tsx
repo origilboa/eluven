@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ThreadInstructionPanel } from "@/components/instructions/thread-instruction-panel";
-import { ChatInterface } from "@/components/threads/chat-interface";
-import { ThreadInfoPanel } from "@/components/threads/thread-info-panel";
+import { ThreadDetailClient } from "@/components/threads/thread-detail-client";
 import { api, ApiError } from "@/lib/api";
 import { requireAuthSession } from "@/lib/auth-session";
 import type {
@@ -68,13 +66,12 @@ export default async function ThreadDetailPage({ params }: ThreadDetailPageProps
         <h1 className="mt-2 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">{thread.title}</h1>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <ChatInterface locale={locale} threadId={threadId} initialMessages={messages} />
-        <div className="space-y-6">
-          <ThreadInstructionPanel locale={locale} threadId={threadId} />
-          <ThreadInfoPanel locale={locale} thread={thread} activityEntries={activityEntries} />
-        </div>
-      </div>
+      <ThreadDetailClient
+        locale={locale}
+        thread={thread}
+        initialMessages={messages}
+        activityEntries={activityEntries}
+      />
     </div>
   );
 }

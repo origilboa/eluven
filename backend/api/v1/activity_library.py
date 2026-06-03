@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_active_user, get_db
 from core.logging import get_logger
-from models.activity import ActivityLibraryEntry, QAStage, ThreadQAQuestion
+from models.activity import ActivityLibraryEntry, ActivityPrompt
 from models.user import User
 from schemas.activity import ActivityLibraryDetailResponse, ActivityLibraryEntryResponse
 
@@ -73,7 +73,7 @@ async def get_activity_library_entry(
     db: Annotated[AsyncSession, Depends(get_db)],
     module_type: Annotated[str | None, Query()] = None,
 ) -> ActivityLibraryDetailResponse:
-    """Get a thread type definition with opening Q&A count."""
+    """Get a thread type definition with activity prompt count."""
     query = select(ActivityLibraryEntry).where(
         ActivityLibraryEntry.is_active.is_(True),
         ActivityLibraryEntry.thread_type == thread_type,
@@ -90,17 +90,14 @@ async def get_activity_library_entry(
     if entry is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread type not found")
 
-    opening_count = await db.scalar(
+    prompt_count = await db.scalar(
         select(func.count())
-        .select_from(ThreadQAQuestion)
-        .where(
-            ThreadQAQuestion.activity_entry_id == entry.id,
-            ThreadQAQuestion.stage == QAStage.OPENING,
-        ),
+        .select_from(ActivityPrompt)
+        .where(ActivityPrompt.activity_entry_id == entry.id),
     )
 
     base = _entry_response(entry)
     return ActivityLibraryDetailResponse(
         **base.model_dump(),
-        opening_question_count=int(opening_count or 0),
+        prompt_count=int(prompt_count or 0),
     )

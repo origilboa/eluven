@@ -69,10 +69,10 @@ GET    /api/v1/admin/activity-library
 GET    /api/v1/admin/activity-library/{entry_id}
 POST   /api/v1/admin/activity-library
 PATCH  /api/v1/admin/activity-library/{entry_id}
-PUT    /api/v1/admin/activity-library/{entry_id}/opening-questions
+PUT    /api/v1/admin/activity-library/{entry_id}/prompts
 ```
 
-Editable fields include `default_instruction_content` (copied to each new Thread on create), model routing, token budget, and opening Q&A questions. `thread_type` slug is immutable after create.
+Editable fields include `default_instruction_content` (copied to each new Thread on create), model routing, token budget, and activity prompts. `thread_type` slug is immutable after create.
 
 ## Out of scope
 

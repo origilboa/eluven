@@ -49,6 +49,7 @@ class StreamRequest(BaseModel):
     """Request body for SSE AI streaming."""
 
     content: str = Field(min_length=1)
+    prompt_id: UUID | None = None
 
 
 class MessageResponse(BaseModel):
@@ -113,33 +114,14 @@ class DocumentDownloadUrlResponse(BaseModel):
     expires_in_seconds: int
 
 
-class QAQuestionResponse(BaseModel):
-    """Q&A question from ActivityLibrary with optional existing response."""
+class ThreadPromptResponse(BaseModel):
+    """Activity prompt for a thread type with optional usage timestamp."""
 
     id: UUID
-    question_text: str
+    prompt_text: str
     stage: str
-    response_type: str
-    options: list[str] | None
-    is_required: bool
     sequence_index: int
-    response_text: str | None = None
-    response_options: list[str] | None = None
-    responded_at: datetime | None = None
-
-
-class QAResponseRequest(BaseModel):
-    """Single Q&A answer submission."""
-
-    question_id: UUID
-    response_text: str | None = None
-    response_options: list[str] | None = None
-
-
-class SubmitQARequest(BaseModel):
-    """Batch Q&A response submission."""
-
-    responses: list[QAResponseRequest]
+    used_at: datetime | None = None
 
 
 class StreamStatusEvent(BaseModel):

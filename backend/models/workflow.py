@@ -103,6 +103,7 @@ class WorkflowThreadExecution(Base):
         default=WorkflowThreadStatus.PENDING,
     )
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed_prompt_count: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)

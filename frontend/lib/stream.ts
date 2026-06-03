@@ -29,10 +29,16 @@ export async function streamThreadMessage(
   threadId: string,
   content: string,
   onEvent: (event: StreamEvent) => void,
+  promptId?: string | null,
 ): Promise<void> {
   const session = await getSession();
   if (!session?.accessToken) {
     throw new Error("Not authenticated");
+  }
+
+  const body: { content: string; prompt_id?: string } = { content };
+  if (promptId) {
+    body.prompt_id = promptId;
   }
 
   const response = await fetch(resolveApiUrl(`/threads/${threadId}/stream`), {
@@ -41,7 +47,7 @@ export async function streamThreadMessage(
       "Content-Type": "application/json",
       Authorization: `Bearer ${session.accessToken}`,
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

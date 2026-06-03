@@ -4,7 +4,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 
+import { EntityTagsEditor } from "@/components/tags/entity-tags-editor";
 import { api } from "@/lib/api";
+import { parseFreeformTags } from "@/lib/tags";
 import type { CreateSubmissionRequest, TaskResponse } from "@/lib/types/api";
 import type { Locale } from "@/i18n.config";
 
@@ -25,6 +27,8 @@ export function NewSubmissionModal({
   const queryClient = useQueryClient();
   const titleId = useId();
   const [title, setTitle] = useState("");
+  const [structuredTags, setStructuredTags] = useState<Record<string, string>>({});
+  const [freeformTags, setFreeformTags] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const copy =
@@ -49,6 +53,8 @@ export function NewSubmissionModal({
       return;
     }
     setTitle("");
+    setStructuredTags({});
+    setFreeformTags("");
     setError(null);
   }, [open]);
 
@@ -73,7 +79,16 @@ export function NewSubmissionModal({
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    createMutation.mutate({ title: title.trim() });
+    createMutation.mutate({
+      title: title.trim(),
+      structured_tags: {
+        ...Object.fromEntries(
+          Object.entries(structuredTags).filter(([, value]) => value.trim()),
+        ),
+        student_name: structuredTags.student_name?.trim() ?? "",
+      },
+      freeform_tags: parseFreeformTags(freeformTags),
+    });
   }
 
   return (
@@ -106,6 +121,20 @@ export function NewSubmissionModal({
               className="block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
             />
           </div>
+
+          <EntityTagsEditor
+            locale={locale}
+            structuredTags={structuredTags}
+            freeformTags={freeformTags}
+            onStructuredTagsChange={setStructuredTags}
+            onFreeformTagsChange={setFreeformTags}
+            structuredFields={[
+              { key: "student_name", label: "Student name", required: true },
+              { key: "student_id", label: "Student ID" },
+              { key: "submitted_at", label: "Submitted at" },
+              { key: "is_late", label: "Late submission (true/false)" },
+            ]}
+          />
 
           {error ? (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

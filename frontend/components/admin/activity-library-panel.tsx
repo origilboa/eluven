@@ -10,7 +10,7 @@ import type {
   AdminActivityLibraryDetailResponse,
   AdminActivityLibraryEntryResponse,
   CreateActivityLibraryEntryRequest,
-  ReplaceOpeningQuestionsRequest,
+  ReplaceActivityPromptsRequest,
   UpdateActivityLibraryEntryRequest,
 } from "@/lib/types/api";
 import type { Locale } from "@/i18n.config";
@@ -20,9 +20,8 @@ type ActivityLibraryPanelProps = {
   userRole: string;
 };
 
-type OpeningQuestionDraft = {
-  question_text: string;
-  is_required: boolean;
+type PromptDraft = {
+  prompt_text: string;
 };
 
 type EntryFormState = {
@@ -63,10 +62,9 @@ function formFromDetail(detail: AdminActivityLibraryDetailResponse): EntryFormSt
   };
 }
 
-function questionsFromDetail(detail: AdminActivityLibraryDetailResponse): OpeningQuestionDraft[] {
-  return detail.opening_questions.map((question) => ({
-    question_text: question.question_text,
-    is_required: question.is_required,
+function promptsFromDetail(detail: AdminActivityLibraryDetailResponse): PromptDraft[] {
+  return detail.prompts.map((prompt) => ({
+    prompt_text: prompt.prompt_text,
   }));
 }
 
@@ -87,14 +85,14 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
   const [isCreating, setIsCreating] = useState(false);
   const [createThreadType, setCreateThreadType] = useState("");
   const [form, setForm] = useState<EntryFormState>(EMPTY_FORM);
-  const [questions, setQuestions] = useState<OpeningQuestionDraft[]>([]);
+  const [prompts, setPrompts] = useState<PromptDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const copy =
     locale === "he"
       ? {
           title: "ספריית פעילויות",
-          subtitle: "ניהול סוגי שרשור, הוראות ברירת מחדל ושאלות פתיחה",
+          subtitle: "ניהול סוגי שרשור, הוראות ברירת מחדל והצעות פעילות",
           module: "מודול",
           allModules: "כל המודולים",
           includeInactive: "הצג לא פעילים",
@@ -110,25 +108,24 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
           budgetThreshold: "סף אזהרת תקציב (0–1)",
           supportsAutomation: "תומך באוטומציה",
           isActive: "פעיל",
-          openingQuestions: "שאלות פתיחה",
-          addQuestion: "הוסף שאלה",
-          question: "שאלה",
-          required: "חובה",
+          activityPrompts: "הצעות פעילות",
+          addPrompt: "הוסף הצעה",
+          prompt: "הצעה",
           saveEntry: "שמור הגדרות",
-          saveQuestions: "שמור שאלות",
+          savePrompts: "שמור הצעות",
           saving: "שומר…",
           create: "צור סוג",
           creating: "יוצר…",
           cancel: "ביטול",
           active: "פעיל",
           inactive: "לא פעיל",
-          questions: "שאלות",
+          prompts: "הצעות",
           empty: "אין סוגי פעילות.",
           loading: "טוען…",
         }
       : {
           title: "Activity library",
-          subtitle: "Manage thread types, default instructions, and opening Q&A",
+          subtitle: "Manage thread types, default instructions, and activity prompts",
           module: "Module",
           allModules: "All modules",
           includeInactive: "Show inactive",
@@ -144,19 +141,18 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
           budgetThreshold: "Budget warning threshold (0–1)",
           supportsAutomation: "Supports automation",
           isActive: "Active",
-          openingQuestions: "Opening questions",
-          addQuestion: "Add question",
-          question: "Question",
-          required: "Required",
+          activityPrompts: "Activity prompts",
+          addPrompt: "Add prompt",
+          prompt: "Prompt",
           saveEntry: "Save settings",
-          saveQuestions: "Save questions",
+          savePrompts: "Save prompts",
           saving: "Saving…",
           create: "Create type",
           creating: "Creating…",
           cancel: "Cancel",
           active: "Active",
           inactive: "Inactive",
-          questions: "questions",
+          prompts: "prompts",
           empty: "No activity types.",
           loading: "Loading…",
         };
@@ -197,7 +193,7 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
     setIsCreating(false);
     setSelectedId(entry.id);
     setForm(EMPTY_FORM);
-    setQuestions([]);
+    setPrompts([]);
     setError(null);
   }
 
@@ -206,13 +202,13 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
     setSelectedId(null);
     setCreateThreadType("");
     setForm(EMPTY_FORM);
-    setQuestions([]);
+    setPrompts([]);
     setError(null);
   }
 
   function loadDetailIntoForm(detail: AdminActivityLibraryDetailResponse) {
     setForm(formFromDetail(detail));
-    setQuestions(questionsFromDetail(detail));
+    setPrompts(promptsFromDetail(detail));
   }
 
   useEffect(() => {
@@ -241,16 +237,16 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
     onError: (mutationError: Error) => setError(mutationError.message),
   });
 
-  const questionsMutation = useMutation({
+  const promptsMutation = useMutation({
     mutationFn: ({
       entryId,
       body,
     }: {
       entryId: string;
-      body: ReplaceOpeningQuestionsRequest;
+      body: ReplaceActivityPromptsRequest;
     }) =>
       api.put<AdminActivityLibraryDetailResponse>(
-        `/admin/activity-library/${entryId}/opening-questions`,
+        `/admin/activity-library/${entryId}/prompts`,
         body,
       ),
     onSuccess: async (detail) => {
@@ -365,8 +361,8 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
                     <p className="font-medium text-zinc-900 dark:text-zinc-50">{entry.display_name}</p>
                     <p className="mt-0.5 font-mono text-xs text-zinc-500">{entry.thread_type}</p>
                     <p className="mt-1 text-xs text-zinc-500">
-                      {entry.is_active ? copy.active : copy.inactive} · {entry.opening_question_count}{" "}
-                      {copy.questions}
+                      {entry.is_active ? copy.active : copy.inactive} · {entry.prompt_count}{" "}
+                      {copy.prompts}
                     </p>
                   </button>
                 </li>
@@ -470,36 +466,33 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
 
               <section className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
                 <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-start text-sm font-semibold">{copy.openingQuestions}</h4>
+                  <h4 className="text-start text-sm font-semibold">{copy.activityPrompts}</h4>
                   <button
                     type="button"
                     onClick={() =>
-                      setQuestions((current) => [
-                        ...current,
-                        { question_text: "", is_required: true },
-                      ])
+                      setPrompts((current) => [...current, { prompt_text: "" }])
                     }
                     className="text-sm font-medium text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
                   >
-                    {copy.addQuestion}
+                    {copy.addPrompt}
                   </button>
                 </div>
-                {questions.map((question, index) => (
+                {prompts.map((prompt, index) => (
                   <div
-                    key={`q-${index}`}
+                    key={`prompt-${index}`}
                     className="space-y-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800"
                   >
                     <label className="block text-start text-sm">
-                      <span className="font-medium">{copy.question}</span>
+                      <span className="font-medium">{copy.prompt}</span>
                       <textarea
                         required
                         rows={2}
-                        value={question.question_text}
+                        value={prompt.prompt_text}
                         onChange={(event) =>
-                          setQuestions((current) =>
+                          setPrompts((current) =>
                             current.map((item, itemIndex) =>
                               itemIndex === index
-                                ? { ...item, question_text: event.target.value }
+                                ? { ...item, prompt_text: event.target.value }
                                 : item,
                             ),
                           )
@@ -507,44 +500,26 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
                         className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
                       />
                     </label>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={question.is_required}
-                        onChange={(event) =>
-                          setQuestions((current) =>
-                            current.map((item, itemIndex) =>
-                              itemIndex === index
-                                ? { ...item, is_required: event.target.checked }
-                                : item,
-                            ),
-                          )
-                        }
-                      />
-                      {copy.required}
-                    </label>
                   </div>
                 ))}
                 <button
                   type="button"
-                  disabled={questionsMutation.isPending}
+                  disabled={promptsMutation.isPending}
                   onClick={() =>
-                    questionsMutation.mutate({
+                    promptsMutation.mutate({
                       entryId: selectedId,
                       body: {
-                        questions: questions
-                          .filter((question) => question.question_text.trim())
-                          .map((question, index) => ({
-                            question_text: question.question_text.trim(),
-                            is_required: question.is_required,
-                            sequence_index: index,
+                        prompts: prompts
+                          .filter((prompt) => prompt.prompt_text.trim())
+                          .map((prompt) => ({
+                            prompt_text: prompt.prompt_text.trim(),
                           })),
                       },
                     })
                   }
                   className="inline-flex h-9 items-center rounded-lg border px-3 text-sm font-medium"
                 >
-                  {questionsMutation.isPending ? copy.saving : copy.saveQuestions}
+                  {promptsMutation.isPending ? copy.saving : copy.savePrompts}
                 </button>
               </section>
             </div>

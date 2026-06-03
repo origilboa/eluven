@@ -14,6 +14,8 @@ class CreateClusterRequest(BaseModel):
     cluster_type: str = Field(min_length=1, max_length=100)
     description: str | None = None
     working_language: str | None = Field(default=None, max_length=10)
+    structured_tags: dict[str, Any] | None = None
+    freeform_tags: list[str] | None = None
 
 
 class UpdateClusterRequest(BaseModel):
@@ -22,6 +24,8 @@ class UpdateClusterRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     working_language: str | None = Field(default=None, max_length=10)
+    structured_tags: dict[str, Any] | None = None
+    freeform_tags: list[str] | None = None
 
 
 class ClusterResponse(BaseModel):
@@ -32,6 +36,8 @@ class ClusterResponse(BaseModel):
     cluster_type: str
     description: str | None
     working_language: str | None
+    structured_tags: dict[str, Any] | None
+    freeform_tags: list[str] | None
     task_count: int
     created_at: datetime
 
@@ -44,3 +50,5 @@ class CreateSubmissionRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     working_language: str | None = Field(default=None, max_length=10)
     context: dict[str, Any] | None = None
+    structured_tags: dict[str, Any] | None = None
+    freeform_tags: list[str] | None = None

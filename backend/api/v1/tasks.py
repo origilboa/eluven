@@ -64,6 +64,8 @@ def _task_response(task: Task, thread_count: int) -> TaskResponse:
         cluster_id=task.cluster_id,
         working_language=task.working_language,
         context=task.context,
+        structured_tags=task.structured_tags,
+        freeform_tags=task.freeform_tags,
         thread_count=thread_count,
         created_at=task.created_at,
         updated_at=task.updated_at,
@@ -148,6 +150,8 @@ async def create_task(
         cluster_id=body.cluster_id,
         working_language=working_language,
         context=body.context,
+        structured_tags=body.structured_tags,
+        freeform_tags=body.freeform_tags,
     )
     db.add(task)
     await db.flush()
@@ -201,6 +205,10 @@ async def update_task(
         task.working_language = body.working_language
     if body.context is not None:
         task.context = body.context
+    if body.structured_tags is not None:
+        task.structured_tags = body.structured_tags
+    if body.freeform_tags is not None:
+        task.freeform_tags = body.freeform_tags
 
     await db.flush()
     logger.info("task_updated", task_id=str(task_id))

@@ -88,7 +88,7 @@ def assemble_context(thread: Thread, task: Task, message: str) -> AssembledConte
             task_memory_block(task.memory),  # 8. Task memory (structured first, then free-form)
             thread_documents_block(thread),  # 9. Thread-pinned documents (full text)
             rag_chunks_block(retrieved),     # 10. RAG retrieved chunks (ranked by relevance)
-            qa_responses_block(thread),      # 11. Structured Q&A responses
+            entity_tags_block(task),           # 11. Assignment / task structured + freeform tags
         ],
         messages=conversation_history(thread),  # 12. Conversation history (recent first)
         current_message=message                 # 13. Current user message

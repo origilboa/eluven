@@ -6,15 +6,12 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-class AdminThreadQAQuestionResponse(BaseModel):
-    """Q&A question on an activity type."""
+class AdminActivityPromptResponse(BaseModel):
+    """Activity prompt on an activity type."""
 
     id: UUID
-    question_text: str
+    prompt_text: str
     stage: str
-    response_type: str
-    options: list[str] | None
-    is_required: bool
     sequence_index: int
 
     model_config = {"from_attributes": True}
@@ -36,7 +33,7 @@ class AdminActivityLibraryEntryResponse(BaseModel):
     token_budget_warning_threshold: float
     supports_automation: bool
     default_instruction_content: str | None
-    opening_question_count: int = 0
+    prompt_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -44,9 +41,9 @@ class AdminActivityLibraryEntryResponse(BaseModel):
 
 
 class AdminActivityLibraryDetailResponse(AdminActivityLibraryEntryResponse):
-    """Activity type with opening Q&A questions."""
+    """Activity type with activity prompts."""
 
-    opening_questions: list[AdminThreadQAQuestionResponse] = Field(default_factory=list)
+    prompts: list[AdminActivityPromptResponse] = Field(default_factory=list)
 
 
 class CreateActivityLibraryEntryRequest(BaseModel):
@@ -79,15 +76,13 @@ class UpdateActivityLibraryEntryRequest(BaseModel):
     is_active: bool | None = None
 
 
-class UpsertOpeningQAQuestionRequest(BaseModel):
-    """Single opening Q&A question payload."""
+class UpsertActivityPromptRequest(BaseModel):
+    """Single activity prompt payload."""
 
-    question_text: str = Field(min_length=1)
-    is_required: bool = True
-    sequence_index: int = Field(ge=0)
+    prompt_text: str = Field(min_length=1)
 
 
-class ReplaceOpeningQuestionsRequest(BaseModel):
-    """Replace all opening questions for an activity type."""
+class ReplaceActivityPromptsRequest(BaseModel):
+    """Replace all activity prompts for an activity type."""
 
-    questions: list[UpsertOpeningQAQuestionRequest] = Field(default_factory=list)
+    prompts: list[UpsertActivityPromptRequest] = Field(default_factory=list)

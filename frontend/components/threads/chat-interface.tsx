@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { streamThreadMessage } from "@/lib/stream";
 import type {
@@ -22,6 +22,10 @@ type ChatInterfaceProps = {
   locale: Locale;
   threadId: string;
   initialMessages: MessageResponse[];
+  draftMessage?: string;
+  draftKey?: string | null;
+  promptId?: string | null;
+  onDraftConsumed?: () => void;
 };
 
 function toChatMessages(messages: MessageResponse[]): ChatMessage[] {
@@ -61,12 +65,30 @@ function MemoryInlineCard({
   );
 }
 
-export function ChatInterface({ locale, threadId, initialMessages }: ChatInterfaceProps) {
+export function ChatInterface({
+  locale,
+  threadId,
+  initialMessages,
+  draftMessage = "",
+  draftKey = null,
+  promptId = null,
+  onDraftConsumed,
+}: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => toChatMessages(initialMessages));
   const [input, setInput] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activePromptId, setActivePromptId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!draftKey || !draftMessage.trim()) {
+      return;
+    }
+    setInput(draftMessage);
+    setActivePromptId(promptId ?? null);
+    onDraftConsumed?.();
+  }, [draftKey, draftMessage, onDraftConsumed, promptId]);
 
   const copy = useMemo(
     () =>
@@ -146,6 +168,9 @@ export function ChatInterface({ locale, threadId, initialMessages }: ChatInterfa
     setError(null);
     setInput("");
 
+    const streamPromptId = activePromptId;
+    setActivePromptId(null);
+
     const userId = `user-${Date.now()}`;
     const assistantId = `assistant-${Date.now()}`;
 
@@ -157,8 +182,11 @@ export function ChatInterface({ locale, threadId, initialMessages }: ChatInterfa
     setIsStreaming(true);
 
     try {
-      await streamThreadMessage(threadId, content, (streamEvent) =>
-        handleStreamEvent(streamEvent, assistantId),
+      await streamThreadMessage(
+        threadId,
+        content,
+        (streamEvent) => handleStreamEvent(streamEvent, assistantId),
+        streamPromptId,
       );
     } catch (streamError) {
       setError(streamError instanceof Error ? streamError.message : "Stream failed");

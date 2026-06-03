@@ -48,12 +48,3 @@ export function activityDisplayName(
   const match = entries.find((entry) => entry.thread_type === threadType);
   return match?.display_name ?? threadType;
 }
-
-export function hasPendingOpeningQA(questions: Array<{ stage: string; responded_at: string | null; is_required: boolean }>): boolean {
-  return questions.some(
-    (question) =>
-      question.stage === "opening" &&
-      question.is_required &&
-      question.responded_at === null,
-  );
-}

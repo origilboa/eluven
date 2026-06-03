@@ -45,6 +45,8 @@ class Task(Base):
     status: Mapped[TaskStatus] = mapped_column(str_enum(TaskStatus), default=TaskStatus.DRAFT)
     working_language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     context: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    structured_tags: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    freeform_tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),

@@ -57,6 +57,8 @@ def _cluster_response(cluster: Cluster, task_count: int) -> ClusterResponse:
         cluster_type=cluster.cluster_type,
         description=cluster.description,
         working_language=cluster.working_language,
+        structured_tags=cluster.structured_tags,
+        freeform_tags=cluster.freeform_tags,
         task_count=task_count,
         created_at=cluster.created_at,
     )
@@ -71,6 +73,8 @@ def _task_response(task: Task, thread_count: int) -> TaskResponse:
         cluster_id=task.cluster_id,
         working_language=task.working_language,
         context=task.context,
+        structured_tags=task.structured_tags,
+        freeform_tags=task.freeform_tags,
         thread_count=thread_count,
         created_at=task.created_at,
         updated_at=task.updated_at,
@@ -123,6 +127,8 @@ async def create_cluster(
         cluster_type=body.cluster_type,
         description=body.description,
         working_language=working_language,
+        structured_tags=body.structured_tags,
+        freeform_tags=body.freeform_tags,
     )
     db.add(cluster)
     await db.flush()
@@ -164,6 +170,10 @@ async def update_cluster(
         cluster.description = body.description
     if body.working_language is not None:
         cluster.working_language = body.working_language
+    if body.structured_tags is not None:
+        cluster.structured_tags = body.structured_tags
+    if body.freeform_tags is not None:
+        cluster.freeform_tags = body.freeform_tags
 
     await db.flush()
     logger.info("cluster_updated", cluster_id=str(cluster_id))
@@ -289,6 +299,15 @@ async def create_submission(
         or cluster.working_language
         or current_user.default_working_language
     )
+    structured_tags = dict(body.structured_tags or {})
+    student_name = structured_tags.get("student_name")
+    if not isinstance(student_name, str) or not student_name.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="structured_tags.student_name is required for submissions",
+        )
+    structured_tags["student_name"] = student_name.strip()
+
     task = Task(
         org_id=current_user.org_id,
         owner_id=current_user.id,
@@ -298,6 +317,8 @@ async def create_submission(
         status=TaskStatus.DRAFT,
         working_language=working_language,
         context=body.context,
+        structured_tags=structured_tags,
+        freeform_tags=body.freeform_tags,
     )
     db.add(task)
     await db.flush()

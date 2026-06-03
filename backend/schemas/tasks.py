@@ -15,6 +15,8 @@ class CreateTaskRequest(BaseModel):
     cluster_id: UUID | None = None
     working_language: str | None = Field(default=None, max_length=10)
     context: dict[str, Any] | None = None
+    structured_tags: dict[str, Any] | None = None
+    freeform_tags: list[str] | None = None
 
 
 class UpdateTaskRequest(BaseModel):
@@ -25,6 +27,8 @@ class UpdateTaskRequest(BaseModel):
     cluster_id: UUID | None = None
     working_language: str | None = Field(default=None, max_length=10)
     context: dict[str, Any] | None = None
+    structured_tags: dict[str, Any] | None = None
+    freeform_tags: list[str] | None = None
 
 
 class TaskResponse(BaseModel):
@@ -37,6 +41,8 @@ class TaskResponse(BaseModel):
     cluster_id: UUID | None
     working_language: str | None
     context: dict[str, Any] | None
+    structured_tags: dict[str, Any] | None
+    freeform_tags: list[str] | None
     thread_count: int
     created_at: datetime
     updated_at: datetime

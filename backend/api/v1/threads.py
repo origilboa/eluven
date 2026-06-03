@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.access import get_owned_task, get_owned_thread
@@ -18,7 +18,7 @@ from api.deps import get_current_active_user, get_db
 from core.config import settings
 from core.database import AsyncSessionLocal
 from core.logging import get_logger
-from models.activity import ActivityLibraryEntry, ThreadQAQuestion, ThreadQAResponse
+from models.activity import ActivityLibraryEntry, ActivityPrompt, ThreadPromptUsage
 from models.kb import KBDocumentStatus, ThreadDocument, ThreadDocumentLoadStrategy
 from models.task import Task
 from models.thread import MessageRole, Thread, ThreadMessage
@@ -27,10 +27,9 @@ from schemas.threads import (
     CreateThreadRequest,
     DocumentDownloadUrlResponse,
     MessageResponse,
-    QAQuestionResponse,
+    ThreadPromptResponse,
     SendMessageRequest,
     StreamRequest,
-    SubmitQARequest,
     ThreadDocumentResponse,
     ThreadResponse,
     UpdateThreadRequest,
@@ -358,6 +357,22 @@ async def stream_ai_response(
                     yield _sse_line({"type": "error", "message": "Thread not found"})
                     return
 
+                if body.prompt_id is not None:
+                    existing_usage = await session.execute(
+                        select(ThreadPromptUsage).where(
+                            ThreadPromptUsage.thread_id == thread_id,
+                            ThreadPromptUsage.prompt_id == body.prompt_id,
+                        ),
+                    )
+                    if existing_usage.scalar_one_or_none() is None:
+                        session.add(
+                            ThreadPromptUsage(
+                                thread_id=thread_id,
+                                prompt_id=body.prompt_id,
+                            ),
+                        )
+                        await session.flush()
+
                 yield _sse_line({"type": "status", "message": "Preparing response..."})
 
                 assembler = ContextAssembler()
@@ -531,13 +546,13 @@ async def get_thread_document_download_url(
     )
 
 
-@router.get("/threads/{thread_id}/qa", response_model=list[QAQuestionResponse])
-async def get_thread_qa(
+@router.get("/threads/{thread_id}/prompts", response_model=list[ThreadPromptResponse])
+async def get_thread_prompts(
     thread_id: UUID,
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> list[QAQuestionResponse]:
-    """Return Q&A questions for the thread's activity type with any existing answers."""
+) -> list[ThreadPromptResponse]:
+    """Return activity prompts for the thread's type with usage timestamps."""
     thread = await get_owned_thread(db, thread_id, current_user)
     task = await db.get(Task, thread.task_id)
     if task is None:
@@ -552,49 +567,42 @@ async def get_thread_qa(
     if activity is None:
         return []
 
-    questions_result = await db.execute(
-        select(ThreadQAQuestion)
-        .where(ThreadQAQuestion.activity_entry_id == activity.id)
-        .order_by(ThreadQAQuestion.sequence_index.asc()),
+    prompts_result = await db.execute(
+        select(ActivityPrompt)
+        .where(ActivityPrompt.activity_entry_id == activity.id)
+        .order_by(ActivityPrompt.sequence_index.asc()),
     )
-    questions = list(questions_result.scalars().all())
+    prompts = list(prompts_result.scalars().all())
 
-    responses_result = await db.execute(
-        select(ThreadQAResponse).where(ThreadQAResponse.thread_id == thread.id),
+    usage_result = await db.execute(
+        select(ThreadPromptUsage).where(ThreadPromptUsage.thread_id == thread.id),
     )
-    responses = list(responses_result.scalars().all())
-    latest_by_question: dict[UUID, ThreadQAResponse] = {}
-    for response in responses:
-        latest_by_question[response.question_id] = response
+    usage_by_prompt = {row.prompt_id: row for row in usage_result.scalars().all()}
 
-    results: list[QAQuestionResponse] = []
-    for question in questions:
-        existing = latest_by_question.get(question.id)
-        results.append(
-            QAQuestionResponse(
-                id=question.id,
-                question_text=question.question_text,
-                stage=question.stage.value,
-                response_type=question.response_type.value,
-                options=question.options,
-                is_required=question.is_required,
-                sequence_index=question.sequence_index,
-                response_text=existing.response_text if existing else None,
-                response_options=existing.response_options if existing else None,
-                responded_at=existing.responded_at if existing else None,
-            ),
+    return [
+        ThreadPromptResponse(
+            id=prompt.id,
+            prompt_text=prompt.prompt_text,
+            stage=prompt.stage.value,
+            sequence_index=prompt.sequence_index,
+            used_at=usage_by_prompt[prompt.id].used_at if prompt.id in usage_by_prompt else None,
         )
-    return results
+        for prompt in prompts
+    ]
 
 
-@router.post("/threads/{thread_id}/qa", response_model=list[QAQuestionResponse])
-async def submit_thread_qa(
+@router.post(
+    "/threads/{thread_id}/prompts/{prompt_id}/mark-used",
+    response_model=ThreadPromptResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def mark_thread_prompt_used(
     thread_id: UUID,
-    body: SubmitQARequest,
+    prompt_id: UUID,
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> list[QAQuestionResponse]:
-    """Submit Q&A responses for a thread."""
+) -> ThreadPromptResponse:
+    """Mark an activity prompt as used on this thread."""
     thread = await get_owned_thread(db, thread_id, current_user)
     task = await db.get(Task, thread.task_id)
     if task is None:
@@ -612,44 +620,37 @@ async def submit_thread_qa(
             detail="No activity library entry for this thread type",
         )
 
-    question_rows = await db.execute(
-        select(ThreadQAQuestion.id).where(
-            ThreadQAQuestion.activity_entry_id == activity.id,
+    prompt_result = await db.execute(
+        select(ActivityPrompt).where(
+            ActivityPrompt.id == prompt_id,
+            ActivityPrompt.activity_entry_id == activity.id,
         ),
     )
-    valid_question_ids = set(question_rows.scalars().all())
+    prompt = prompt_result.scalar_one_or_none()
+    if prompt is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prompt not found")
 
-    for item in body.responses:
-        if item.question_id not in valid_question_ids:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid question_id: {item.question_id}",
-            )
-        if not item.response_text and not item.response_options:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Each response must include response_text or response_options",
-            )
-
-        await db.execute(
-            delete(ThreadQAResponse).where(
-                ThreadQAResponse.thread_id == thread.id,
-                ThreadQAResponse.question_id == item.question_id,
-            ),
-        )
-        db.add(
-            ThreadQAResponse(
-                thread_id=thread.id,
-                question_id=item.question_id,
-                response_text=item.response_text,
-                response_options=item.response_options,
-            ),
-        )
-
-    await db.flush()
-    logger.info(
-        "thread_qa_submitted",
-        thread_id=str(thread_id),
-        response_count=len(body.responses),
+    existing = await db.execute(
+        select(ThreadPromptUsage).where(
+            ThreadPromptUsage.thread_id == thread.id,
+            ThreadPromptUsage.prompt_id == prompt.id,
+        ),
     )
-    return await get_thread_qa(thread_id, current_user, db)
+    usage = existing.scalar_one_or_none()
+    if usage is None:
+        usage = ThreadPromptUsage(thread_id=thread.id, prompt_id=prompt.id)
+        db.add(usage)
+        await db.flush()
+
+    logger.info(
+        "thread_prompt_marked_used",
+        thread_id=str(thread_id),
+        prompt_id=str(prompt_id),
+    )
+    return ThreadPromptResponse(
+        id=prompt.id,
+        prompt_text=prompt.prompt_text,
+        stage=prompt.stage.value,
+        sequence_index=prompt.sequence_index,
+        used_at=usage.used_at,
+    )
