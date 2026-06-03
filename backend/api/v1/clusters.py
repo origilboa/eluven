@@ -11,12 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.access import get_owned_cluster
 from api.deps import get_current_active_user, get_db
+from api.kb_queries import collection_document_count
 from core.cluster_types import (
     MODULE_STUDENT_PAPER_REVIEW,
     is_assignment_cluster,
 )
 from core.logging import get_logger
 from models.cluster import Cluster
+from models.kb import KBCollection, KBCollectionAttachment
 from models.task import Task, TaskStatus
 from models.thread import Thread
 from models.user import User
@@ -26,6 +28,7 @@ from schemas.clusters import (
     CreateSubmissionRequest,
     UpdateClusterRequest,
 )
+from schemas.kb import ClusterReferenceCollectionResponse
 from schemas.tasks import TaskResponse
 
 logger = get_logger(__name__)
@@ -166,6 +169,51 @@ async def update_cluster(
     logger.info("cluster_updated", cluster_id=str(cluster_id))
     count = await _task_count(db, cluster.id)
     return _cluster_response(cluster, count)
+
+
+@router.get(
+    "/{cluster_id}/reference-collections",
+    response_model=list[ClusterReferenceCollectionResponse],
+)
+async def list_cluster_reference_collections(
+    cluster_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[ClusterReferenceCollectionResponse]:
+    """List KB collections attached directly to this cluster (reference material)."""
+    await get_owned_cluster(db, cluster_id, current_user)
+
+    attachment_result = await db.execute(
+        select(KBCollectionAttachment, KBCollection)
+        .join(KBCollection, KBCollectionAttachment.collection_id == KBCollection.id)
+        .where(
+            KBCollectionAttachment.entity_type == "cluster",
+            KBCollectionAttachment.entity_id == cluster_id,
+            KBCollection.org_id == current_user.org_id,
+        )
+        .order_by(KBCollection.name.asc()),
+    )
+
+    responses: list[ClusterReferenceCollectionResponse] = []
+    for attachment, collection in attachment_result.all():
+        doc_count = await collection_document_count(db, collection.id)
+        responses.append(
+            ClusterReferenceCollectionResponse(
+                id=collection.id,
+                attachment_id=attachment.id,
+                name=collection.name,
+                description=collection.description,
+                document_count=doc_count,
+                created_at=collection.created_at,
+            ),
+        )
+
+    logger.info(
+        "cluster_reference_collections_listed",
+        cluster_id=str(cluster_id),
+        count=len(responses),
+    )
+    return responses
 
 
 @router.get("/{cluster_id}/tasks", response_model=list[TaskResponse])

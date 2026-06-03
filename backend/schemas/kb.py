@@ -78,3 +78,14 @@ class TaskReferenceCollectionResponse(BaseModel):
     document_count: int
     attached_via: Literal["task", "cluster"]
     created_at: datetime
+
+
+class ClusterReferenceCollectionResponse(BaseModel):
+    """KB collection attached directly to a Cluster."""
+
+    id: UUID
+    attachment_id: UUID
+    name: str
+    description: str | None
+    document_count: int
+    created_at: datetime

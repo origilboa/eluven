@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.access import get_owned_task
 from api.deps import get_current_active_user, get_db
+from api.kb_queries import collection_document_count
 from core.logging import get_logger
 from models.cluster import Cluster
 from core.config import settings
@@ -306,18 +307,6 @@ async def export_task_word(
     )
 
 
-async def _collection_document_count(session: AsyncSession, collection_id: UUID) -> int:
-    count = await session.scalar(
-        select(func.count())
-        .select_from(KBDocument)
-        .where(
-            KBDocument.collection_id == collection_id,
-            KBDocument.is_deleted.is_(False),
-        ),
-    )
-    return int(count or 0)
-
-
 def _task_document_response(document: TaskDocument) -> TaskDocumentResponse:
     return TaskDocumentResponse(
         id=document.id,
@@ -501,7 +490,7 @@ async def list_task_reference_collections(
             if collection.id in seen:
                 continue
             seen.add(collection.id)
-            doc_count = await _collection_document_count(db, collection.id)
+            doc_count = await collection_document_count(db, collection.id)
             responses.append(
                 TaskReferenceCollectionResponse(
                     id=collection.id,

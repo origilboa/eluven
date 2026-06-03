@@ -133,6 +133,7 @@ export function CollectionDetail({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["kb-collections"] });
       queryClient.invalidateQueries({ queryKey: ["task-reference-collections"] });
+      queryClient.invalidateQueries({ queryKey: ["cluster-reference-collections"] });
       router.refresh();
     },
     onError: (mutationError: Error) => {

@@ -133,6 +133,7 @@ export function CollectionCard({ collection, locale }: CollectionCardProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["kb-collections"] });
       queryClient.invalidateQueries({ queryKey: ["task-reference-collections"] });
+      queryClient.invalidateQueries({ queryKey: ["cluster-reference-collections"] });
       setAttachOpen(false);
       setEntityId("");
       router.refresh();
@@ -146,6 +147,7 @@ export function CollectionCard({ collection, locale }: CollectionCardProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["kb-collections"] });
       queryClient.invalidateQueries({ queryKey: ["task-reference-collections"] });
+      queryClient.invalidateQueries({ queryKey: ["cluster-reference-collections"] });
       router.refresh();
     },
     onError: (mutationError: Error) => {

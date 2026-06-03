@@ -199,6 +199,15 @@ export type TaskReferenceCollectionResponse = {
   created_at: string;
 };
 
+export type ClusterReferenceCollectionResponse = {
+  id: string;
+  attachment_id: string;
+  name: string;
+  description: string | null;
+  document_count: number;
+  created_at: string;
+};
+
 export type QAQuestionResponse = {
   id: string;
   question_text: string;
