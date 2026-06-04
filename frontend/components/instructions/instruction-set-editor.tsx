@@ -25,6 +25,7 @@ type InstructionSetEditorProps = {
   activatePath: string;
   title: string;
   subtitle?: string;
+  readOnlyMessage?: string;
   threadTypeOptions?: ThreadTypeOption[];
   selectedThreadType?: string | null;
   onThreadTypeChange?: (threadType: string | null) => void;
@@ -54,6 +55,7 @@ export function InstructionSetEditor({
   activatePath,
   title,
   subtitle,
+  readOnlyMessage,
   threadTypeOptions,
   selectedThreadType = null,
   onThreadTypeChange,
@@ -210,7 +212,9 @@ export function InstructionSetEditor({
             </div>
 
             {!canEdit ? (
-              <p className="text-start text-sm text-zinc-500 dark:text-zinc-400">{copy.readOnly}</p>
+              <p className="text-start text-sm text-zinc-500 dark:text-zinc-400">
+                {readOnlyMessage ?? copy.readOnly}
+              </p>
             ) : null}
 
             {editing ? (
@@ -300,13 +304,18 @@ export function InstructionSetEditor({
                         <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
                           {formatTimestamp(version.created_at, locale)}
                         </p>
+                        {version.change_note ? (
+                          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                            {version.change_note}
+                          </p>
+                        ) : null}
                       </div>
                       {canEdit && !version.is_active ? (
                         <button
                           type="button"
                           disabled={activateMutation.isPending}
                           onClick={() => activateMutation.mutate({ version_id: version.id })}
-                          className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-zinc-300 px-3 text-sm font-medium disabled:opacity-60 dark:border-zinc-700"
+                          className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
                         >
                           {activateMutation.isPending ? copy.activating : copy.setActive}
                         </button>
