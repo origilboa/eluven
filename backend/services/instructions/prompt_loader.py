@@ -72,3 +72,13 @@ def load_level_brief(level: InstructionLevel) -> str:
 def charter_version() -> str:
     """Return parsed charter version for logging."""
     return charter_version_from_text(load_charter_text())
+
+
+@lru_cache(maxsize=1)
+def load_precedence_text() -> str:
+    """Load runtime InstructionLayer precedence directive."""
+    path = _DEFAULT_INSTRUCTIONS_DIR / "instruction-layer-precedence.md"
+    if not path.is_file():
+        logger.warning("instruction_precedence_missing", path=str(path))
+        return ""
+    return path.read_text(encoding="utf-8")

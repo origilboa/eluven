@@ -2,8 +2,15 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-import { streamInstructionAssistant } from "@/lib/stream";
-import type { InstructionAssistantScope, StreamEvent } from "@/lib/types/api";
+import {
+  streamInstructionAssistant,
+  streamInstructionIntegrityRemediate,
+} from "@/lib/stream";
+import type {
+  InstructionAssistantScope,
+  InstructionIntegrityIssue,
+  StreamEvent,
+} from "@/lib/types/api";
 import type { Locale } from "@/i18n.config";
 
 type AssistantMessage = {
@@ -19,16 +26,34 @@ type InstructionAssistantPanelProps = {
   draftContent: string;
   onApplyDraft: (content: string) => void;
   disabled?: boolean;
+  integrityIssues?: InstructionIntegrityIssue[];
+  onIntegrityIssuesChange?: () => void;
 };
 
 const PROPOSED_DRAFT_MARKER = "## Proposed instruction draft";
+const PROPOSED_PARTIAL_FIX_MARKER = "## Proposed partial fix";
 
 function extractProposedDraft(content: string): string {
+  const partialIndex = content.indexOf(PROPOSED_PARTIAL_FIX_MARKER);
+  if (partialIndex >= 0) {
+    return content.slice(partialIndex + PROPOSED_PARTIAL_FIX_MARKER.length).trim();
+  }
   const markerIndex = content.indexOf(PROPOSED_DRAFT_MARKER);
   if (markerIndex >= 0) {
     return content.slice(markerIndex + PROPOSED_DRAFT_MARKER.length).trim();
   }
   return content.trim();
+}
+
+function applyPartialFix(base: string, fix: string): string {
+  const trimmedFix = fix.trim();
+  if (!trimmedFix) {
+    return base;
+  }
+  if (base.includes(trimmedFix)) {
+    return base;
+  }
+  return `${base.trimEnd()}\n\n${trimmedFix}`;
 }
 
 function StreamingDots() {
@@ -47,12 +72,15 @@ export function InstructionAssistantPanel({
   draftContent,
   onApplyDraft,
   disabled = false,
+  integrityIssues = [],
+  onIntegrityIssuesChange,
 }: InstructionAssistantPanelProps) {
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [input, setInput] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [remediationMode, setRemediationMode] = useState(false);
 
   const copy = useMemo(
     () =>
@@ -65,12 +93,21 @@ export function InstructionAssistantPanel({
             sending: "שולח…",
             empty: "שאל את העוזר לעזור בניסוח ההוראות.",
             apply: "החל על הטיוטה",
+            applyPartial: "החל תיקון חלקי",
             applyConfirm: "להחליף את תוכן ההוראות בטיוטה שהעוזר הציע?",
+            applyPartialConfirm: "להוסיף את התיקון החלקי לטיוטה?",
             statusPreparing: "מכין תשובה…",
-            reviewIntegrity: "בדיקת שלמות טיוטה",
+            reviewIntegrity: "בדיקת שלמות (שיחה)",
             reviewIntegrityPrompt:
               "הרץ בדיקת שלמות על הטיוטה הנוכחית לפי רשימת הבדיקה המלאה.",
             reviewIntegrityEmpty: "הוסף טקסט לטיוטה לפני בדיקת שלמות.",
+            reviewCompleteness: "בדיקת שלמות תוכן",
+            reviewCompletenessPrompt:
+              "הרץ בדיקת שלמות תוכן — מה חסר או דל בטיוטה לעומת השכבות שמעל?",
+            reviewCompletenessEmpty: "הוסף טקסט לטיוטה לפני בדיקת שלמות תוכן.",
+            fixWithAssistant: "תקן עם העוזר",
+            exitRemediation: "יציאה מתיקון",
+            remediationHint: "מצב תיקון פעיל — העוזר יציע תיקונים מבוססי ממצאים.",
           }
         : {
             title: "Instruction assistant",
@@ -80,12 +117,21 @@ export function InstructionAssistantPanel({
             sending: "Sending…",
             empty: "Ask the assistant to help author instructions.",
             apply: "Apply to draft",
+            applyPartial: "Apply partial fix",
             applyConfirm: "Replace the instruction textarea with the assistant's proposed draft?",
+            applyPartialConfirm: "Append the assistant's partial fix to the draft?",
             statusPreparing: "Preparing response…",
-            reviewIntegrity: "Review draft integrity",
+            reviewIntegrity: "Review draft integrity (chat)",
             reviewIntegrityPrompt:
               "Run an integrity review on my current draft using the full checklist.",
             reviewIntegrityEmpty: "Add draft text before running an integrity review.",
+            reviewCompleteness: "Review completeness",
+            reviewCompletenessPrompt:
+              "Run a completeness review — what is missing or thin compared to inherited layers?",
+            reviewCompletenessEmpty: "Add draft text before running a completeness review.",
+            fixWithAssistant: "Fix with assistant",
+            exitRemediation: "Exit remediation",
+            remediationHint: "Remediation mode — the assistant proposes fixes from findings.",
           },
     [locale],
   );
@@ -93,6 +139,10 @@ export function InstructionAssistantPanel({
   const lastAssistantMessage = useMemo(
     () => [...messages].reverse().find((message) => message.role === "assistant" && message.content),
     [messages],
+  );
+
+  const hasPartialFix = Boolean(
+    lastAssistantMessage?.content.includes(PROPOSED_PARTIAL_FIX_MARKER),
   );
 
   const handleStreamEvent = useCallback((event: StreamEvent, assistantId: string) => {
@@ -129,7 +179,7 @@ export function InstructionAssistantPanel({
 
   async function sendMessage(
     messageText?: string,
-    options?: { integrityReview?: boolean },
+    options?: { integrityReview?: boolean; completenessReview?: boolean },
   ) {
     const trimmed = (messageText ?? input).trim();
     if (!trimmed || isStreaming || disabled) {
@@ -156,22 +206,38 @@ export function InstructionAssistantPanel({
     setIsStreaming(true);
     setStatusMessage(copy.statusPreparing);
 
+    const chatPayload = nextMessages
+      .filter((message) => !message.isStreaming)
+      .map((message) => ({
+        role: message.role,
+        content: message.content,
+      }));
+
     try {
-      await streamInstructionAssistant(
-        {
-          scope,
-          draft_content: draftContent,
-          messages: nextMessages
-            .filter((message) => !message.isStreaming)
-            .map((message) => ({
-              role: message.role,
-              content: message.content,
-            })),
-          locale,
-          integrity_review: options?.integrityReview ?? false,
-        },
-        (streamEvent) => handleStreamEvent(streamEvent, assistantId),
-      );
+      if (remediationMode && integrityIssues.length > 0) {
+        await streamInstructionIntegrityRemediate(
+          {
+            scope,
+            draft_content: draftContent,
+            issues: integrityIssues,
+            messages: chatPayload,
+            locale,
+          },
+          (streamEvent) => handleStreamEvent(streamEvent, assistantId),
+        );
+      } else {
+        await streamInstructionAssistant(
+          {
+            scope,
+            draft_content: draftContent,
+            messages: chatPayload,
+            locale,
+            integrity_review: options?.integrityReview ?? false,
+            completeness_review: options?.completenessReview ?? false,
+          },
+          (streamEvent) => handleStreamEvent(streamEvent, assistantId),
+        );
+      }
     } catch (streamError) {
       setError(streamError instanceof Error ? streamError.message : "Stream failed");
       setMessages((current) => current.filter((message) => message.id !== assistantId));
@@ -181,7 +247,7 @@ export function InstructionAssistantPanel({
     }
   }
 
-  function handleApplyDraft() {
+  function handleApplyDraft(partial: boolean) {
     if (!lastAssistantMessage?.content) {
       return;
     }
@@ -189,10 +255,25 @@ export function InstructionAssistantPanel({
     if (!proposed) {
       return;
     }
-    if (!window.confirm(copy.applyConfirm)) {
+    const confirmText = partial ? copy.applyPartialConfirm : copy.applyConfirm;
+    if (!window.confirm(confirmText)) {
+      return;
+    }
+    onIntegrityIssuesChange?.();
+    if (partial) {
+      onApplyDraft(applyPartialFix(draftContent, proposed));
       return;
     }
     onApplyDraft(proposed);
+  }
+
+  function startRemediation() {
+    if (!integrityIssues.length) {
+      return;
+    }
+    setRemediationMode(true);
+    setMessages([]);
+    setError(null);
   }
 
   return (
@@ -200,6 +281,9 @@ export function InstructionAssistantPanel({
       <div className="border-b border-zinc-200 px-4 py-3 text-start dark:border-zinc-800">
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{copy.title}</h3>
         <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{copy.subtitle}</p>
+        {remediationMode ? (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{copy.remediationHint}</p>
+        ) : null}
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
@@ -228,29 +312,79 @@ export function InstructionAssistantPanel({
       </div>
 
       <div className="space-y-2 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <button
-          type="button"
-          onClick={() => {
-            if (!draftContent.trim()) {
-              setError(copy.reviewIntegrityEmpty);
-              return;
-            }
-            void sendMessage(copy.reviewIntegrityPrompt, { integrityReview: true });
-          }}
-          disabled={disabled || isStreaming || !draftContent.trim()}
-          className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
-        >
-          {copy.reviewIntegrity}
-        </button>
-        {lastAssistantMessage && !isStreaming ? (
+        {integrityIssues.length > 0 && !remediationMode ? (
           <button
             type="button"
-            onClick={handleApplyDraft}
-            disabled={disabled}
-            className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            onClick={startRemediation}
+            disabled={disabled || isStreaming}
+            className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-3 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-60 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
           >
-            {copy.apply}
+            {copy.fixWithAssistant}
           </button>
+        ) : null}
+        {remediationMode ? (
+          <button
+            type="button"
+            onClick={() => setRemediationMode(false)}
+            disabled={isStreaming}
+            className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
+          >
+            {copy.exitRemediation}
+          </button>
+        ) : null}
+        {!remediationMode ? (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                if (!draftContent.trim()) {
+                  setError(copy.reviewCompletenessEmpty);
+                  return;
+                }
+                void sendMessage(copy.reviewCompletenessPrompt, { completenessReview: true });
+              }}
+              disabled={disabled || isStreaming || !draftContent.trim()}
+              className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              {copy.reviewCompleteness}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!draftContent.trim()) {
+                  setError(copy.reviewIntegrityEmpty);
+                  return;
+                }
+                void sendMessage(copy.reviewIntegrityPrompt, { integrityReview: true });
+              }}
+              disabled={disabled || isStreaming || !draftContent.trim()}
+              className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              {copy.reviewIntegrity}
+            </button>
+          </>
+        ) : null}
+        {lastAssistantMessage && !isStreaming ? (
+          <>
+            {hasPartialFix ? (
+              <button
+                type="button"
+                onClick={() => handleApplyDraft(true)}
+                disabled={disabled}
+                className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+              >
+                {copy.applyPartial}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => handleApplyDraft(false)}
+              disabled={disabled}
+              className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              {copy.apply}
+            </button>
+          </>
         ) : null}
         <div className="flex gap-2">
           <input

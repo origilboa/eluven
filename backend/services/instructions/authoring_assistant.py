@@ -68,6 +68,9 @@ class InstructionAuthoringAssistant:
             {"role": message.role, "content": message.content}
             for message in request.messages
         ]
+        if not chat_messages:
+            raise ValueError("At least one chat message is required")
+
         context = await self._context_builder.build(
             session,
             scope=request.scope,
@@ -76,11 +79,27 @@ class InstructionAuthoringAssistant:
             chat_messages=chat_messages,
             locale=request.locale,
             integrity_review=request.integrity_review,
+            completeness_review=request.completeness_review,
         )
 
-        if not chat_messages:
-            raise ValueError("At least one chat message is required")
+        async for chunk in self._stream_with_context(
+            session,
+            user=user,
+            context=context,
+            request=request,
+        ):
+            yield chunk
 
+    async def _stream_with_context(
+        self,
+        session: AsyncSession,
+        *,
+        user: User,
+        context: AuthoringAssembledContext,
+        request: InstructionAssistantStreamRequest,
+    ) -> AsyncIterator[str | dict[str, Any]]:
+        """Stream Bedrock output for a pre-assembled authoring context."""
+        _ = session
         model_id = settings.instruction_authoring_model_id
         request_body = _build_bedrock_request(context)
         started = time.perf_counter()
@@ -93,6 +112,7 @@ class InstructionAuthoringAssistant:
             charter_version=context.charter_version,
             model_id=model_id,
             integrity_review=request.integrity_review,
+            completeness_review=request.completeness_review,
         )
 
         full_text_parts: list[str] = []

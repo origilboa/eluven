@@ -18,7 +18,11 @@ from core.config import settings
 from core.logging import get_logger
 from models.instruction import InstructionLevel, InstructionSet, InstructionVersion
 from models.user import User, UserRole
-from schemas.instruction_assistant import InstructionAssistantStreamRequest
+from schemas.instruction_assistant import (
+    InstructionAssistantStreamRequest,
+    InstructionIntegrityCheckRequest,
+    InstructionIntegrityRemediateRequest,
+)
 from schemas.instructions import (
     ActivateInstructionVersionRequest,
     CreateInstructionVersionRequest,
@@ -26,6 +30,12 @@ from schemas.instructions import (
     InstructionVersionResponse,
 )
 from services.instructions.authoring_assistant import InstructionAuthoringAssistant
+from services.instructions.integrity_checker import InstructionIntegrityChecker
+from services.instructions.integrity_gate import (
+    require_instruction_integrity_approval,
+    scope_key_from_instruction_set,
+)
+from services.instructions.integrity_remediator import InstructionIntegrityRemediator
 
 logger = get_logger(__name__)
 
@@ -244,6 +254,17 @@ async def _create_instruction_version(
     user: User,
     log_context: dict[str, str],
 ) -> InstructionSetResponse:
+    require_instruction_integrity_approval(
+        user_id=str(user.id),
+        scope_key=scope_key_from_instruction_set(instruction_set),
+        content=body.content,
+        token=body.integrity_approval_token,
+    )
+    logger.info(
+        "instruction_integrity_gate_passed",
+        user_id=str(user.id),
+        **log_context,
+    )
     max_version = await session.scalar(
         select(func.max(InstructionVersion.version_number)).where(
             InstructionVersion.instruction_set_id == instruction_set.id,
@@ -579,6 +600,75 @@ async def activate_thread_instruction_version(
 
 def _instruction_assistant_sse_line(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload, default=str)}\n\n"
+
+
+@router.post("/assistant/integrity-check")
+async def check_instruction_integrity(
+    body: InstructionIntegrityCheckRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Structured integrity check; returns approval token on pass."""
+    checker = InstructionIntegrityChecker()
+    return await checker.check(
+        db,
+        user=current_user,
+        scope=body.scope,
+        draft_content=body.draft_content,
+        locale=body.locale,
+    )
+
+
+@router.post("/assistant/integrity-check/remediate")
+async def remediate_instruction_integrity(
+    body: InstructionIntegrityRemediateRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StreamingResponse:
+    """Stream remediation guidance after a failed integrity check."""
+    if not body.messages:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one chat message is required",
+        )
+
+    remediator = InstructionIntegrityRemediator()
+
+    async def event_generator() -> AsyncIterator[str]:
+        try:
+            yield _instruction_assistant_sse_line(
+                {"type": "status", "message": "Preparing remediation..."},
+            )
+            async for chunk in remediator.stream(db, user=current_user, request=body):
+                if isinstance(chunk, str):
+                    yield _instruction_assistant_sse_line({"type": "text", "text": chunk})
+                    continue
+                if chunk.get("type") == "done":
+                    yield _instruction_assistant_sse_line(
+                        {
+                            "type": "done",
+                            "input_tokens": chunk.get("input_tokens", 0),
+                            "output_tokens": chunk.get("output_tokens", 0),
+                            "cached_tokens": chunk.get("cached_tokens", 0),
+                        },
+                    )
+        except Exception as exc:
+            logger.warning(
+                "instruction_integrity_remediate_failed",
+                user_id=str(current_user.id),
+                error=str(exc),
+            )
+            yield _instruction_assistant_sse_line({"type": "error", "message": str(exc)})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/assistant/stream")

@@ -373,9 +373,47 @@ export type InstructionSetResponse = {
   versions: InstructionVersionResponse[];
 };
 
+export type InstructionIntegrityIssue = {
+  code: string;
+  severity: "blocking" | "warning";
+  title: string;
+  message: string;
+  excerpt?: string | null;
+  conflicting_level?: string | null;
+  recommendation: string;
+  suggested_target?: string | null;
+  fix_strategy:
+    | "remove_excerpt"
+    | "move_to_layer"
+    | "rephrase_as_delta"
+    | "relocate_to_settings"
+    | "relocate_to_prompts"
+    | "ask_user";
+  needs_user_input?: boolean;
+};
+
+export type InstructionIntegrityCheckResponse = {
+  status: "pass" | "fail";
+  summary: string;
+  content_hash: string;
+  issues: InstructionIntegrityIssue[];
+  clarifying_questions: { id: string; prompt: string; why_needed?: string | null }[];
+  approval_token: string | null;
+  expires_at: string | null;
+};
+
+export type InstructionIntegrityRemediateRequest = {
+  scope: InstructionAssistantScope;
+  draft_content: string;
+  issues: InstructionIntegrityIssue[];
+  messages: { role: "user" | "assistant"; content: string }[];
+  locale: "en" | "he";
+};
+
 export type CreateInstructionVersionRequest = {
   content: string;
   change_note?: string | null;
+  integrity_approval_token: string;
 };
 
 export type ActivateInstructionVersionRequest = {
@@ -471,6 +509,7 @@ export type InstructionAssistantStreamRequest = {
   messages: { role: "user" | "assistant"; content: string }[];
   locale: "en" | "he";
   integrity_review?: boolean;
+  completeness_review?: boolean;
 };
 
 export type AdminOrgResponse = {
@@ -596,6 +635,7 @@ export type CreateActivityLibraryEntryRequest = {
   token_budget_warning_threshold?: number;
   supports_automation?: boolean;
   default_instruction_content?: string | null;
+  integrity_approval_token?: string | null;
   is_active?: boolean;
 };
 
@@ -608,6 +648,7 @@ export type UpdateActivityLibraryEntryRequest = {
   token_budget_warning_threshold?: number;
   supports_automation?: boolean;
   default_instruction_content?: string | null;
+  integrity_approval_token?: string | null;
   is_active?: boolean;
 };
 

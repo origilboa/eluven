@@ -4,6 +4,7 @@ import { resolveApiUrl } from "@/lib/api";
 import type {
   ActivityOrchestratorStreamRequest,
   InstructionAssistantStreamRequest,
+  InstructionIntegrityRemediateRequest,
   PromptAssistantStreamRequest,
   StreamEvent,
 } from "@/lib/types/api";
@@ -113,6 +114,30 @@ export async function streamInstructionAssistant(
     },
     body: JSON.stringify(request),
   });
+
+  await consumeSseResponse(response, onEvent);
+}
+
+export async function streamInstructionIntegrityRemediate(
+  request: InstructionIntegrityRemediateRequest,
+  onEvent: (event: StreamEvent) => void,
+): Promise<void> {
+  const session = await getSession();
+  if (!session?.accessToken) {
+    throw new Error("Not authenticated");
+  }
+
+  const response = await fetch(
+    resolveApiUrl("/instructions/assistant/integrity-check/remediate"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
 
   await consumeSseResponse(response, onEvent);
 }

@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 
 import { PromptAssistantPanel } from "@/components/activity-studio/prompt-assistant-panel";
-import { InstructionAssistantPanel } from "@/components/instructions/instruction-assistant-panel";
+import { InstructionAuthoringWorkbench } from "@/components/instructions/instruction-authoring-workbench";
 import { AuthoringSplitLayout } from "@/components/shared/authoring-split-layout";
+import { useInstructionDraftGate } from "@/lib/use-instruction-draft-gate";
 import type { InstructionAssistantScope, PromptAssistantScope } from "@/lib/types/api";
 import type { Locale } from "@/i18n.config";
 
@@ -39,9 +40,9 @@ type ActivityEntryDetailTabsProps = {
   setForm: React.Dispatch<React.SetStateAction<EntryFormState>>;
   prompts: PromptDraft[];
   setPrompts: React.Dispatch<React.SetStateAction<PromptDraft[]>>;
-  onSaveSettings: () => void;
+  onSaveSettings: (options?: { integrityApprovalToken?: string | null }) => void;
   onSavePrompts: () => void;
-  onCreate?: () => void;
+  onCreate?: (options?: { integrityApprovalToken?: string | null }) => void;
   isSavingSettings: boolean;
   isSavingPrompts: boolean;
   isCreating?: boolean;
@@ -78,6 +79,7 @@ export function ActivityEntryDetailTabs({
   copy,
 }: ActivityEntryDetailTabsProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("settings");
+  const [saveGateError, setSaveGateError] = useState<string | null>(null);
 
   const tabCopy =
     locale === "he"
@@ -106,6 +108,26 @@ export function ActivityEntryDetailTabs({
     }),
     [activityDraft, entryId, mode, moduleType, scopeLevel, threadType],
   );
+
+  const instructionGate = useInstructionDraftGate(instructionScope, form.default_instruction_content, locale);
+
+  const gateCopy =
+    locale === "he"
+      ? { saveBlocked: "הרץ בדיקת שלמות מוצלחת לפני שמירת הוראות." }
+      : { saveBlocked: "Pass an integrity check before saving instructions." };
+
+  function resolveIntegrityToken(): string | null | undefined {
+    const content = form.default_instruction_content.trim();
+    if (!content) {
+      return null;
+    }
+    if (!instructionGate.canSave || !instructionGate.approvalToken) {
+      setSaveGateError(gateCopy.saveBlocked);
+      return undefined;
+    }
+    setSaveGateError(null);
+    return instructionGate.approvalToken;
+  }
 
   const promptScope: PromptAssistantScope = useMemo(
     () => ({
@@ -154,10 +176,14 @@ export function ActivityEntryDetailTabs({
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
+            const token = resolveIntegrityToken();
+            if (token === undefined) {
+              return;
+            }
             if (mode === "create" && onCreate) {
-              onCreate();
+              onCreate({ integrityApprovalToken: token });
             } else {
-              onSaveSettings();
+              onSaveSettings({ integrityApprovalToken: token });
             }
           }}
         >
@@ -174,6 +200,9 @@ export function ActivityEntryDetailTabs({
             </label>
           ) : null}
           <SettingsFields form={form} setForm={setForm} copy={copy} />
+          {saveGateError ? (
+            <p className="text-start text-sm text-red-600 dark:text-red-400">{saveGateError}</p>
+          ) : null}
           <button
             type="submit"
             disabled={isSavingSettings || isCreating}
@@ -191,53 +220,27 @@ export function ActivityEntryDetailTabs({
       ) : null}
 
       {activeTab === "instructions" ? (
-        <AuthoringSplitLayout
-          form={
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                onSaveSettings();
-              }}
-            >
-              <label className="block text-start text-sm">
-                <span className="font-medium">{copy.defaultInstructions}</span>
-                <textarea
-                  rows={12}
-                  value={form.default_instruction_content}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      default_instruction_content: event.target.value,
-                    }))
-                  }
-                  className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 font-mono text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                />
-              </label>
-              {mode === "edit" ? (
-                <button
-                  type="submit"
-                  disabled={isSavingSettings}
-                  className="inline-flex h-9 items-center rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
-                >
-                  {isSavingSettings ? copy.saving : copy.saveEntry}
-                </button>
-              ) : null}
-            </form>
-          }
-          assistant={
-            threadType && moduleType ? (
-              <InstructionAssistantPanel
-                locale={locale}
-                scope={instructionScope}
-                draftContent={form.default_instruction_content}
-                onApplyDraft={(content) =>
-                  setForm((current) => ({ ...current, default_instruction_content: content }))
-                }
-              />
-            ) : null
-          }
-        />
+        threadType && moduleType ? (
+          <InstructionAuthoringWorkbench
+            locale={locale}
+            scope={instructionScope}
+            draftContent={form.default_instruction_content}
+            onDraftChange={(content) =>
+              setForm((current) => ({ ...current, default_instruction_content: content }))
+            }
+            gate={instructionGate}
+            contentLabel={copy.defaultInstructions}
+            textareaId={`activity-instructions-${entryId ?? "create"}`}
+            rows={12}
+            showSaveButton={mode === "edit"}
+            onSave={({ integrityApprovalToken }) =>
+              onSaveSettings({ integrityApprovalToken })
+            }
+            savePending={isSavingSettings}
+            saveLabel={copy.saveEntry}
+            savingLabel={copy.saving}
+          />
+        ) : null
       ) : null}
 
       {activeTab === "prompts" ? (

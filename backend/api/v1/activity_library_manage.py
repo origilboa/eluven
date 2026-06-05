@@ -23,6 +23,7 @@ from schemas.admin_activity import (
     UpdateActivityLibraryEntryRequest,
 )
 from services.activity.instruction_sync import sync_instruction_set_from_activity_default
+from services.instructions.integrity_gate import require_activity_default_integrity_approval
 
 logger = get_logger(__name__)
 
@@ -195,6 +196,16 @@ async def create_org_activity_library_entry(
             detail="Activity type already exists for this organization and module",
         )
 
+    require_activity_default_integrity_approval(
+        user_id=str(current_user.id),
+        level="org",
+        thread_type=body.thread_type,
+        module_type=body.module_type,
+        entry_id=None,
+        content=body.default_instruction_content,
+        token=body.integrity_approval_token,
+    )
+
     entry = ActivityLibraryEntry(
         org_id=current_user.org_id,
         thread_type=body.thread_type,
@@ -250,6 +261,15 @@ async def update_org_activity_library_entry(
         _validate_prompts_for_automation(entry, count)
 
     if "default_instruction_content" in updates:
+        require_activity_default_integrity_approval(
+            user_id=str(current_user.id),
+            level="org",
+            thread_type=entry.thread_type,
+            module_type=entry.module_type,
+            entry_id=str(entry.id),
+            content=entry.default_instruction_content,
+            token=body.integrity_approval_token,
+        )
         await sync_instruction_set_from_activity_default(
             db,
             entry=entry,

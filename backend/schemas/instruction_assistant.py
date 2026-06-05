@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AuthoringTarget(str, Enum):
@@ -45,6 +46,66 @@ class AuthoringChatMessage(BaseModel):
     content: str = Field(min_length=1)
 
 
+class InstructionIntegrityIssue(BaseModel):
+    """Single integrity finding with actionable guidance."""
+
+    code: str
+    severity: Literal["blocking", "warning"] = "blocking"
+    title: str
+    message: str
+    excerpt: str | None = None
+    conflicting_level: str | None = None
+    recommendation: str
+    suggested_target: str | None = None
+    fix_strategy: Literal[
+        "remove_excerpt",
+        "move_to_layer",
+        "rephrase_as_delta",
+        "relocate_to_settings",
+        "relocate_to_prompts",
+        "ask_user",
+    ] = "ask_user"
+    needs_user_input: bool = False
+
+
+class ClarifyingQuestion(BaseModel):
+    """Question when integrity fix requires user context."""
+
+    id: str
+    prompt: str
+    why_needed: str | None = None
+
+
+class InstructionIntegrityCheckRequest(BaseModel):
+    """Structured integrity check for gating save."""
+
+    scope: InstructionAssistantScope
+    draft_content: str = Field(min_length=1)
+    locale: Literal["en", "he"] = "en"
+
+
+class InstructionIntegrityCheckResponse(BaseModel):
+    """Integrity check result with optional approval token."""
+
+    status: Literal["pass", "fail"]
+    summary: str
+    content_hash: str
+    issues: list[InstructionIntegrityIssue] = Field(default_factory=list)
+    clarifying_questions: list[ClarifyingQuestion] = Field(default_factory=list)
+    approval_token: str | None = None
+    expires_at: datetime | None = None
+
+
+class InstructionIntegrityRemediateRequest(BaseModel):
+    """Multi-turn remediation after a failed integrity check."""
+
+    scope: InstructionAssistantScope
+    draft_content: str = Field(min_length=1)
+    issues: list[InstructionIntegrityIssue] = Field(default_factory=list)
+    messages: list[AuthoringChatMessage] = Field(default_factory=list)
+    locale: Literal["en", "he"] = "en"
+
+
 class InstructionAssistantStreamRequest(BaseModel):
     """Stream request for the instruction authoring assistant."""
 
@@ -53,3 +114,17 @@ class InstructionAssistantStreamRequest(BaseModel):
     messages: list[AuthoringChatMessage] = Field(default_factory=list)
     locale: Literal["en", "he"] = "en"
     integrity_review: bool = False
+    completeness_review: bool = False
+
+    @model_validator(mode="after")
+    def _exclusive_review_modes(self) -> InstructionAssistantStreamRequest:
+        active = sum(
+            [
+                self.integrity_review,
+                self.completeness_review,
+            ],
+        )
+        if active > 1:
+            msg = "Only one review mode per stream request"
+            raise ValueError(msg)
+        return self

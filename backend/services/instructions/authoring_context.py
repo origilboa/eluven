@@ -87,6 +87,9 @@ class InstructionAuthoringContext:
         chat_messages: list[dict[str, str]],
         locale: str,
         integrity_review: bool = False,
+        completeness_review: bool = False,
+        integrity_remediation: bool = False,
+        integrity_issues_json: str | None = None,
     ) -> AuthoringAssembledContext:
         """Resolve scope, auth, and compose system prompt."""
         if scope.authoring_target == AuthoringTarget.ACTIVITY_LIBRARY_DEFAULT:
@@ -98,6 +101,9 @@ class InstructionAuthoringContext:
                 chat_messages=chat_messages,
                 locale=locale,
                 integrity_review=integrity_review,
+                completeness_review=completeness_review,
+                integrity_remediation=integrity_remediation,
+                integrity_issues_json=integrity_issues_json,
             )
 
         editable_level = InstructionLevel(scope.level)
@@ -138,9 +144,12 @@ class InstructionAuthoringContext:
                 editable_level=editable_level,
                 locale=locale,
                 integrity_review=integrity_review,
+                completeness_review=completeness_review,
+                integrity_remediation=integrity_remediation,
             ),
             metadata_block,
             "\n\n".join(inherited_blocks),
+            _remediation_block(integrity_remediation, integrity_issues_json),
             f"## Current draft ({editable_level.value} only)\n{draft_content}".strip()
             if draft_content.strip()
             else f"## Current draft ({editable_level.value} only)\n(empty)",
@@ -251,6 +260,9 @@ class InstructionAuthoringContext:
         chat_messages: list[dict[str, str]],
         locale: str,
         integrity_review: bool = False,
+        completeness_review: bool = False,
+        integrity_remediation: bool = False,
+        integrity_issues_json: str | None = None,
     ) -> AuthoringAssembledContext:
         """Build context for ActivityLibrary default_instruction_content authoring."""
         editable_level = InstructionLevel(scope.level)
@@ -335,10 +347,13 @@ class InstructionAuthoringContext:
                 editable_level=editable_level,
                 locale=locale,
                 integrity_review=integrity_review,
+                completeness_review=completeness_review,
+                integrity_remediation=integrity_remediation,
                 authoring_target="activity_library_default",
             ),
             metadata_block,
             "\n\n".join(inherited_blocks),
+            _remediation_block(integrity_remediation, integrity_issues_json),
             "## Current draft (default_instruction_content only)\n"
             + (draft_content.strip() if draft_content.strip() else "(empty)"),
         ]
@@ -537,7 +552,9 @@ def _session_block(
     *,
     editable_level: InstructionLevel,
     locale: str,
-    integrity_review: bool,
+    integrity_review: bool = False,
+    completeness_review: bool = False,
+    integrity_remediation: bool = False,
     authoring_target: str | None = None,
 ) -> str:
     target_line = (
@@ -549,7 +566,23 @@ def _session_block(
         "## Session\n"
         f"{target_line}"
         f"Working language: {locale}\n"
-        f"Integrity review: {'active' if integrity_review else 'inactive'}"
+        f"Integrity review: {'active' if integrity_review else 'inactive'}\n"
+        f"Completeness review: {'active' if completeness_review else 'inactive'}\n"
+        f"Integrity remediation: {'active' if integrity_remediation else 'inactive'}"
+    )
+
+
+def _remediation_block(
+    integrity_remediation: bool,
+    integrity_issues_json: str | None,
+) -> str:
+    if not integrity_remediation or not integrity_issues_json:
+        return ""
+    return (
+        "## Integrity remediation context\n"
+        "Help the user fix these integrity issues. Ask clarifying questions only when needed. "
+        "Propose fixes under ## Proposed instruction draft or ## Proposed partial fix.\n"
+        f"Issues JSON:\n{integrity_issues_json}"
     )
 
 

@@ -28,6 +28,7 @@ from services.ai.untrusted_content import wrap_untrusted_block
 from services.document.chunker import DocumentChunker
 from services.rag.retriever import ContextChunk, RAGRetriever
 from services.storage import StorageService
+from services.instructions.prompt_loader import load_precedence_text
 from services.tags.context_tags import format_merged_tags_block, load_merged_tags_for_task
 
 if TYPE_CHECKING:
@@ -146,19 +147,24 @@ class ContextAssembler:
             thread_type=None,
         )
 
+        precedence_text = load_precedence_text()
         system_blocks: list[dict[str, Any]] = []
+        if precedence_text:
+            system_blocks.append(_cached_text_block(precedence_text))
         if platform_text:
-            system_blocks.append(_cached_text_block(platform_text))
+            system_blocks.append(
+                _labeled_instruction_block("platform", platform_text, cached=True),
+            )
         if org_text:
-            system_blocks.append(_cached_text_block(org_text))
+            system_blocks.append(_labeled_instruction_block("org", org_text, cached=True))
         if user_text:
-            system_blocks.append(_cached_text_block(user_text))
+            system_blocks.append(_labeled_instruction_block("user", user_text, cached=True))
         if cluster_text:
-            system_blocks.append(_plain_text_block(cluster_text))
+            system_blocks.append(_labeled_instruction_block("cluster", cluster_text))
         if task_level_text:
-            system_blocks.append(_plain_text_block(task_level_text))
+            system_blocks.append(_labeled_instruction_block("task", task_level_text))
         if thread_text:
-            system_blocks.append(_plain_text_block(thread_text))
+            system_blocks.append(_labeled_instruction_block("thread", thread_text))
         system_blocks.append(
             _plain_text_block(f"Working language: {working_language}"),
         )
@@ -485,6 +491,18 @@ def _cached_text_block(text: str) -> dict[str, Any]:
 
 def _plain_text_block(text: str) -> dict[str, Any]:
     return {"type": "text", "text": text}
+
+
+def _labeled_instruction_block(
+    level: str,
+    text: str,
+    *,
+    cached: bool = False,
+) -> dict[str, Any]:
+    labeled = f"## InstructionLayer: {level}\n{text}"
+    if cached:
+        return _cached_text_block(labeled)
+    return _plain_text_block(labeled)
 
 
 def _wrap_task_context_block(task: Task) -> str:

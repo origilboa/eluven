@@ -51,7 +51,7 @@ def test_charter_version_unknown_when_missing() -> None:
 def test_load_charter_text_from_repo() -> None:
     text = load_charter_text()
     assert "Instruction Authoring Assistant" in text
-    assert charter_version_from_text(text) == "1.1.0"
+    assert charter_version_from_text(text) == "1.2.0"
     assert "Activity configuration vs InstructionLayer" in text
     assert "Integrity review mode" in text
 
@@ -63,6 +63,17 @@ def test_session_block_integrity_review_active() -> None:
         integrity_review=True,
     )
     assert "Integrity review: active" in block
+
+
+def test_session_block_completeness_and_remediation_flags() -> None:
+    block = _session_block(
+        editable_level=InstructionLevel.USER,
+        locale="en",
+        completeness_review=True,
+        integrity_remediation=True,
+    )
+    assert "Completeness review: active" in block
+    assert "Integrity remediation: active" in block
 
 
 def test_format_activity_configuration_includes_settings_fields() -> None:

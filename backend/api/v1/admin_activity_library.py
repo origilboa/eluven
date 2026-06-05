@@ -16,6 +16,7 @@ from core.platform import PLATFORM_ORG_ID
 from models.activity import ActivityLibraryEntry, ActivityPrompt, PromptStage
 from models.user import User
 from services.activity.instruction_sync import sync_instruction_set_from_activity_default
+from services.instructions.integrity_gate import require_activity_default_integrity_approval
 from schemas.admin_activity import (
     AdminActivityLibraryDetailResponse,
     AdminActivityLibraryEntryResponse,
@@ -187,6 +188,16 @@ async def create_admin_activity_library_entry(
             detail="Activity type already exists for this module",
         )
 
+    require_activity_default_integrity_approval(
+        user_id=str(admin.id),
+        level="platform",
+        thread_type=body.thread_type,
+        module_type=body.module_type,
+        entry_id=None,
+        content=body.default_instruction_content,
+        token=body.integrity_approval_token,
+    )
+
     entry = ActivityLibraryEntry(
         org_id=PLATFORM_ORG_ID,
         thread_type=body.thread_type,
@@ -242,6 +253,15 @@ async def update_admin_activity_library_entry(
         _validate_prompts_for_automation(entry, count)
 
     if "default_instruction_content" in updates:
+        require_activity_default_integrity_approval(
+            user_id=str(admin.id),
+            level="platform",
+            thread_type=entry.thread_type,
+            module_type=entry.module_type,
+            entry_id=str(entry.id),
+            content=entry.default_instruction_content,
+            token=body.integrity_approval_token,
+        )
         await sync_instruction_set_from_activity_default(
             db,
             entry=entry,

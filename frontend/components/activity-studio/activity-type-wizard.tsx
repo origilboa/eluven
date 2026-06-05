@@ -12,8 +12,9 @@ import {
   type PromptDraft,
   parseTokenBudget,
 } from "@/components/activity-studio/activity-entry-detail-tabs";
-import { InstructionAssistantPanel } from "@/components/instructions/instruction-assistant-panel";
+import { InstructionAuthoringWorkbench } from "@/components/instructions/instruction-authoring-workbench";
 import { AuthoringSplitLayout } from "@/components/shared/authoring-split-layout";
+import { useInstructionDraftGate } from "@/lib/use-instruction-draft-gate";
 import { api } from "@/lib/api";
 import { MODULE_DEFINITIONS, MODULE_TYPE_EXTERNAL_PAPER_REVIEW } from "@/lib/modules";
 import type {
@@ -118,6 +119,35 @@ export function ActivityTypeWizard({ locale }: ActivityTypeWizardProps) {
     review: copy.review,
   };
 
+  const instructionScope = useMemo(
+    () => ({
+      authoring_target: "activity_library_default" as const,
+      level: "platform" as const,
+      thread_type: threadType || null,
+      module_type: moduleType || null,
+      activity_draft: {
+        display_name: form.display_name || null,
+        description: form.description || null,
+        thread_type: threadType || null,
+        module_type: moduleType || null,
+        supports_automation: form.supports_automation,
+      },
+    }),
+    [
+      form.description,
+      form.display_name,
+      form.supports_automation,
+      moduleType,
+      threadType,
+    ],
+  );
+
+  const instructionGate = useInstructionDraftGate(
+    instructionScope,
+    form.default_instruction_content,
+    locale,
+  );
+
   const draft: ActivityTypeDraft = useMemo(
     () => ({
       module_type: moduleType,
@@ -142,15 +172,17 @@ export function ActivityTypeWizard({ locale }: ActivityTypeWizardProps) {
   );
 
   const publishMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (integrityApprovalToken?: string | null) => {
+      const instructionContent = form.default_instruction_content.trim()
+        ? form.default_instruction_content.trim()
+        : null;
       const body: CreateActivityLibraryEntryRequest = {
         thread_type: threadType.trim(),
         module_type: moduleType,
         display_name: form.display_name.trim(),
         description: form.description.trim() ? form.description.trim() : null,
-        default_instruction_content: form.default_instruction_content.trim()
-          ? form.default_instruction_content.trim()
-          : null,
+        default_instruction_content: instructionContent,
+        integrity_approval_token: instructionContent ? integrityApprovalToken ?? undefined : undefined,
         default_model_id: form.default_model_id.trim() || null,
         fallback_model_id: form.fallback_model_id.trim() ? form.fallback_model_id.trim() : null,
         token_budget: parseTokenBudget(form.token_budget),
@@ -256,45 +288,24 @@ export function ActivityTypeWizard({ locale }: ActivityTypeWizardProps) {
       ) : null}
 
       {step === "instructions" ? (
-        <AuthoringSplitLayout
-          form={
-            <label className="block text-start text-sm">
-              <span className="font-medium">Default instructions</span>
-              <textarea
-                rows={12}
-                value={form.default_instruction_content}
-                onChange={(event) =>
-                  setForm((c) => ({ ...c, default_instruction_content: event.target.value }))
-                }
-                className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 font-mono text-sm dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-          }
-          assistant={
-            threadType && moduleType ? (
-              <InstructionAssistantPanel
-                locale={locale}
-                scope={{
-                  authoring_target: "activity_library_default",
-                  level: "platform",
-                  thread_type: threadType,
-                  module_type: moduleType,
-                  activity_draft: {
-                    display_name: form.display_name,
-                    description: form.description,
-                    thread_type: threadType,
-                    module_type: moduleType,
-                    supports_automation: form.supports_automation,
-                  },
-                }}
-                draftContent={form.default_instruction_content}
-                onApplyDraft={(content) =>
-                  setForm((c) => ({ ...c, default_instruction_content: content }))
-                }
-              />
-            ) : null
-          }
-        />
+        threadType && moduleType ? (
+          <InstructionAuthoringWorkbench
+            locale={locale}
+            scope={instructionScope}
+            draftContent={form.default_instruction_content}
+            onDraftChange={(content) =>
+              setForm((current) => ({ ...current, default_instruction_content: content }))
+            }
+            gate={instructionGate}
+            contentLabel="Default instructions"
+            textareaId="wizard-default-instructions"
+            rows={12}
+            showSaveButton={false}
+            onSave={() => undefined}
+            saveLabel=""
+            savingLabel=""
+          />
+        ) : null
       ) : null}
 
       {step === "prompts" ? (
@@ -438,7 +449,19 @@ export function ActivityTypeWizard({ locale }: ActivityTypeWizardProps) {
           <button
             type="button"
             disabled={publishMutation.isPending || !threadType.trim() || !form.display_name.trim()}
-            onClick={() => publishMutation.mutate()}
+            onClick={() => {
+              const instructionContent = form.default_instruction_content.trim();
+              if (instructionContent && !instructionGate.canSave) {
+                setError(
+                  locale === "he"
+                    ? "הרץ בדיקת שלמות מוצלחת בשלב ההוראות לפני פרסום."
+                    : "Pass an integrity check on the Instructions step before publishing.",
+                );
+                return;
+              }
+              setError(null);
+              publishMutation.mutate(instructionGate.approvalToken);
+            }}
             className="inline-flex h-10 items-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
           >
             {publishMutation.isPending ? copy.publishing : copy.publish}

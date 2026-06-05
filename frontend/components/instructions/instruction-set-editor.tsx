@@ -3,8 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { InstructionAssistantPanel } from "@/components/instructions/instruction-assistant-panel";
-import { AuthoringSplitLayout } from "@/components/shared/authoring-split-layout";
+import { InstructionAuthoringWorkbench } from "@/components/instructions/instruction-authoring-workbench";
 import { api } from "@/lib/api";
 import type {
   ActivateInstructionVersionRequest,
@@ -152,14 +151,14 @@ export function InstructionSetEditor({
     setError(null);
   }
 
-  function handleSave(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handleSave({ integrityApprovalToken }: { integrityApprovalToken: string }) {
     if (!draftContent.trim()) {
       return;
     }
     createMutation.mutate({
       content: draftContent.trim(),
       change_note: changeNote.trim() ? changeNote.trim() : null,
+      integrity_approval_token: integrityApprovalToken,
     });
   }
 
@@ -230,68 +229,52 @@ export function InstructionSetEditor({
             ) : null}
 
             {editing ? (
-              <AuthoringSplitLayout
-                form={
-                <form className="space-y-4" onSubmit={handleSave}>
-                  <div className="space-y-2 text-start">
-                    <label
-                      htmlFor={`instruction-content-${fetchPath}`}
-                      className="block text-sm font-medium"
-                    >
-                      {copy.content}
-                    </label>
-                    <textarea
-                      id={`instruction-content-${fetchPath}`}
-                      required
-                      rows={10}
-                      value={draftContent}
-                      onChange={(event) => setDraftContent(event.target.value)}
-                      className="block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 font-mono text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-                    />
-                  </div>
-                  <div className="space-y-2 text-start">
-                    <label htmlFor={`instruction-note-${fetchPath}`} className="block text-sm font-medium">
-                      {copy.changeNote}
-                    </label>
-                    <input
-                      id={`instruction-note-${fetchPath}`}
-                      value={changeNote}
-                      onChange={(event) => setChangeNote(event.target.value)}
-                      className="block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                    />
-                  </div>
-                  {error ? (
-                    <p className="text-start text-sm text-red-600 dark:text-red-400">{error}</p>
-                  ) : null}
-                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setEditing(false)}
-                      className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 px-4 text-sm font-medium"
-                    >
-                      {copy.cancel}
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={createMutation.isPending}
-                      className="inline-flex h-10 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
-                    >
-                      {createMutation.isPending ? copy.saving : copy.save}
-                    </button>
-                  </div>
-                </form>
-                }
-                assistant={
-                  resolvedAssistantScope ? (
-                    <InstructionAssistantPanel
-                      locale={locale}
-                      scope={resolvedAssistantScope}
-                      draftContent={draftContent}
-                      onApplyDraft={setDraftContent}
-                    />
-                  ) : undefined
-                }
-              />
+              resolvedAssistantScope ? (
+                <InstructionAuthoringWorkbench
+                  locale={locale}
+                  scope={resolvedAssistantScope}
+                  draftContent={draftContent}
+                  onDraftChange={setDraftContent}
+                  contentLabel={copy.content}
+                  textareaId={`instruction-content-${fetchPath}`}
+                  onSave={handleSave}
+                  savePending={createMutation.isPending}
+                  saveLabel={copy.save}
+                  savingLabel={copy.saving}
+                  footer={
+                    <>
+                      <div className="space-y-2 text-start">
+                        <label
+                          htmlFor={`instruction-note-${fetchPath}`}
+                          className="block text-sm font-medium"
+                        >
+                          {copy.changeNote}
+                        </label>
+                        <input
+                          id={`instruction-note-${fetchPath}`}
+                          value={changeNote}
+                          onChange={(event) => setChangeNote(event.target.value)}
+                          className="block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        />
+                      </div>
+                      {error ? (
+                        <p className="text-start text-sm text-red-600 dark:text-red-400">{error}</p>
+                      ) : null}
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setEditing(false)}
+                          className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 px-4 text-sm font-medium"
+                        >
+                          {copy.cancel}
+                        </button>
+                      </div>
+                    </>
+                  }
+                />
+              ) : (
+                <p className="text-start text-sm text-zinc-500">{copy.readOnly}</p>
+              )
             ) : (
               <div className="rounded-lg bg-zinc-50 p-4 text-start dark:bg-zinc-900">
                 {activeContent ? (

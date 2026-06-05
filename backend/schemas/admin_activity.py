@@ -59,6 +59,7 @@ class CreateActivityLibraryEntryRequest(BaseModel):
     token_budget_warning_threshold: float = Field(default=0.8, ge=0.1, le=1.0)
     supports_automation: bool = True
     default_instruction_content: str | None = None
+    integrity_approval_token: str | None = None
     is_active: bool = True
 
 
@@ -73,6 +74,7 @@ class UpdateActivityLibraryEntryRequest(BaseModel):
     token_budget_warning_threshold: float | None = Field(default=None, ge=0.1, le=1.0)
     supports_automation: bool | None = None
     default_instruction_content: str | None = None
+    integrity_approval_token: str | None = None
     is_active: bool | None = None
 
 

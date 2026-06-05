@@ -40,6 +40,7 @@ class CreateInstructionVersionRequest(BaseModel):
 
     content: str = Field(min_length=1)
     change_note: str | None = Field(default=None, max_length=500)
+    integrity_approval_token: str = Field(min_length=1)
 
 
 class ActivateInstructionVersionRequest(BaseModel):

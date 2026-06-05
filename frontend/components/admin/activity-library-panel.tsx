@@ -268,13 +268,15 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
     onError: (mutationError: Error) => setError(mutationError.message),
   });
 
-  function buildUpdateBody(): UpdateActivityLibraryEntryRequest {
+  function buildUpdateBody(integrityApprovalToken?: string | null): UpdateActivityLibraryEntryRequest {
+    const instructionContent = form.default_instruction_content.trim()
+      ? form.default_instruction_content.trim()
+      : null;
     return {
       display_name: form.display_name.trim(),
       description: form.description.trim() ? form.description.trim() : null,
-      default_instruction_content: form.default_instruction_content.trim()
-        ? form.default_instruction_content.trim()
-        : null,
+      default_instruction_content: instructionContent,
+      integrity_approval_token: instructionContent ? integrityApprovalToken ?? undefined : undefined,
       default_model_id: form.default_model_id.trim() || undefined,
       fallback_model_id: form.fallback_model_id.trim() ? form.fallback_model_id.trim() : null,
       token_budget: parseTokenBudget(form.token_budget),
@@ -284,7 +286,9 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
     };
   }
 
-  function buildCreateBody(): CreateActivityLibraryEntryRequest | null {
+  function buildCreateBody(
+    integrityApprovalToken?: string | null,
+  ): CreateActivityLibraryEntryRequest | null {
     const moduleType = moduleFilter.trim();
     if (!createThreadType.trim() || !form.display_name.trim() || !moduleType) {
       setError(
@@ -294,14 +298,16 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
       );
       return null;
     }
+    const instructionContent = form.default_instruction_content.trim()
+      ? form.default_instruction_content.trim()
+      : null;
     return {
       thread_type: createThreadType.trim(),
       module_type: moduleType,
       display_name: form.display_name.trim(),
       description: form.description.trim() ? form.description.trim() : null,
-      default_instruction_content: form.default_instruction_content.trim()
-        ? form.default_instruction_content.trim()
-        : null,
+      default_instruction_content: instructionContent,
+      integrity_approval_token: instructionContent ? integrityApprovalToken ?? undefined : undefined,
       default_model_id: form.default_model_id.trim() || null,
       fallback_model_id: form.fallback_model_id.trim() ? form.fallback_model_id.trim() : null,
       token_budget: parseTokenBudget(form.token_budget),
@@ -311,9 +317,9 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
     };
   }
 
-  async function handleQuickCreate() {
+  async function handleQuickCreate(options?: { integrityApprovalToken?: string | null }) {
     try {
-      const body = buildCreateBody();
+      const body = buildCreateBody(options?.integrityApprovalToken);
       if (!body) {
         return;
       }
@@ -445,7 +451,7 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
                 setPrompts={setPrompts}
                 onSaveSettings={() => undefined}
                 onSavePrompts={() => undefined}
-                onCreate={() => void handleQuickCreate()}
+                onCreate={(options) => void handleQuickCreate(options)}
                 isSavingSettings={false}
                 isSavingPrompts={false}
                 isCreating={createMutation.isPending || promptsMutation.isPending}
@@ -472,8 +478,11 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
                 setForm={setForm}
                 prompts={prompts}
                 setPrompts={setPrompts}
-                onSaveSettings={() =>
-                  updateMutation.mutate({ entryId: selectedId, body: buildUpdateBody() })
+                onSaveSettings={(options) =>
+                  updateMutation.mutate({
+                    entryId: selectedId,
+                    body: buildUpdateBody(options?.integrityApprovalToken),
+                  })
                 }
                 onSavePrompts={() =>
                   promptsMutation.mutate({
