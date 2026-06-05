@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.access import get_owned_task, get_owned_thread
 from api.deps import get_current_active_user, get_db
+from api.document_helpers import raise_if_integrity_blocked
 from core.config import settings
 from core.database import AsyncSessionLocal
 from core.logging import get_logger
@@ -36,6 +37,7 @@ from schemas.threads import (
 )
 from services.ai.client import AIClient
 from services.ai.context import ContextAssembler
+from services.document.integrity_gate import evaluate_task_integrity_gate
 from services.document.constants import SUPPORTED_FILE_TYPES
 from services.document_queue import enqueue_document_processing
 from services.instructions.thread_instructions import create_thread_instruction_set
@@ -338,6 +340,9 @@ async def stream_ai_response(
     task = await db.get(Task, thread.task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    gate = await evaluate_task_integrity_gate(db, task.id)
+    raise_if_integrity_blocked(gate)
 
     activity = await _activity_entry_for_thread(
         db,

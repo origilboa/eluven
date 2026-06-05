@@ -13,14 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.access import get_owned_task
 from api.deps import get_current_active_user, get_db
+from api.document_helpers import validate_upload_size
 from api.kb_queries import collection_document_count
+from core.config import settings
 from core.logging import get_logger
 from models.cluster import Cluster
-from core.config import settings
 from models.kb import (
     KBCollection,
     KBCollectionAttachment,
-    KBDocument,
     KBDocumentStatus,
     TaskDocument,
     ThreadDocumentLoadStrategy,
@@ -29,6 +29,11 @@ from models.memory import TaskMemoryEntry, TaskMemoryEntryType
 from models.task import Task, TaskStatus
 from models.thread import Thread
 from models.user import User
+from schemas.document_integrity import (
+    AcknowledgeIntegrityRequest,
+    IntegrityAcknowledgmentChoice,
+    TaskIntegrityGateResponse,
+)
 from schemas.kb import TaskReferenceCollectionResponse
 from schemas.tasks import (
     CreateTaskRequest,
@@ -39,6 +44,10 @@ from schemas.tasks import (
 )
 from schemas.threads import DocumentDownloadUrlResponse, TaskDocumentResponse
 from services.document.constants import SUPPORTED_FILE_TYPES
+from services.document.integrity_gate import (
+    evaluate_task_integrity_gate,
+    integrity_summary_for_document,
+)
 from services.document_queue import enqueue_document_processing
 from services.export.word_exporter import build_task_word_export
 from services.storage import StorageService
@@ -324,6 +333,11 @@ def _task_document_response(document: TaskDocument) -> TaskDocumentResponse:
         status=document.status.value,
         load_strategy=document.load_strategy.value,
         token_count=document.token_count,
+        integrity=integrity_summary_for_document(
+            integrity_report=document.integrity_report,
+            integrity_acknowledged_hash=document.integrity_acknowledged_hash,
+            integrity_acknowledged_at=document.integrity_acknowledged_at,
+        ),
         created_at=document.created_at,
     )
 
@@ -380,6 +394,7 @@ async def upload_task_document(
     file_type = _file_type_from_filename(filename)
     file_bytes = await file.read()
     size_bytes = len(file_bytes)
+    validate_upload_size(size_bytes)
 
     document_id = uuid4()
     s3_key = f"{current_user.org_id}/tasks/{task_id}/{document_id}/{filename}"
@@ -517,3 +532,65 @@ async def list_task_reference_collections(
         count=len(responses),
     )
     return responses
+
+
+@router.get("/{task_id}/integrity-gate", response_model=TaskIntegrityGateResponse)
+async def get_task_integrity_gate(
+    task_id: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TaskIntegrityGateResponse:
+    """Return whether AI/workflow operations are blocked by unacknowledged integrity warnings."""
+    await get_owned_task(db, task_id, current_user)
+    gate = await evaluate_task_integrity_gate(db, task_id)
+    logger.info(
+        "task_integrity_gate_checked",
+        task_id=str(task_id),
+        blocked=gate.blocked,
+        unacknowledged_count=len(gate.unacknowledged_documents),
+    )
+    return gate
+
+
+@router.post(
+    "/{task_id}/documents/{document_id}/integrity-acknowledge",
+    response_model=TaskDocumentResponse,
+)
+async def acknowledge_task_document_integrity(
+    task_id: UUID,
+    document_id: UUID,
+    body: AcknowledgeIntegrityRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TaskDocumentResponse:
+    """Record user acknowledgment for a document integrity warning."""
+    from datetime import UTC, datetime
+
+    from schemas.document_integrity import IntegrityReport, IntegrityStatus
+
+    _task, document = await _get_owned_task_document(
+        db,
+        task_id=task_id,
+        document_id=document_id,
+        user=current_user,
+    )
+    report = IntegrityReport.from_storage(document.integrity_report)
+    if report is None or report.status == IntegrityStatus.CLEAN:
+        return _task_document_response(document)
+
+    if body.choice == IntegrityAcknowledgmentChoice.PROCEED:
+        document.integrity_acknowledged_hash = report.content_hash
+        document.integrity_acknowledged_by = current_user.id
+        document.integrity_acknowledged_at = datetime.now(UTC).replace(tzinfo=None)
+        document.integrity_acknowledgment_choice = body.choice.value
+
+    logger.info(
+        "integrity_warning_acknowledged",
+        task_id=str(task_id),
+        document_id=str(document_id),
+        choice=body.choice.value,
+        integrity_status=report.status.value,
+        user_id=str(current_user.id),
+    )
+    await db.flush()
+    return _task_document_response(document)

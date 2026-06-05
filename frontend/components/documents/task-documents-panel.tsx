@@ -13,10 +13,12 @@ import {
   fileTypeIcon,
 } from "@/lib/document-status";
 import type {
+  AcknowledgeIntegrityRequest,
   AttachCollectionRequest,
   DocumentDownloadUrlResponse,
   KBCollectionResponse,
   TaskDocumentResponse,
+  TaskIntegrityGateResponse,
   TaskReferenceCollectionResponse,
 } from "@/lib/types/api";
 import type { Locale } from "@/i18n.config";
@@ -73,6 +75,12 @@ export function TaskDocumentsPanel({ locale, taskId }: TaskDocumentsPanelProps) 
           clusterNote: "מצורף ברמת מקבץ — הסר מדף מאגר הידע",
           documents: "מסמכים",
           maxSize: "גודל מקסימלי: 50MB",
+          integrityTitle: "אזהרת שלמות מסמך",
+          integrityDescription:
+            "נמצא תוכן חשוד שעלול לנסות להשפיע על תוצאות ה-AI. בדוק את הקובץ לפני שתמשיך.",
+          integrityProceed: "המשך בכל זאת",
+          integrityDismiss: "ביטול",
+          integrityFindings: "ממצאים",
         }
       : {
           paperTitle: "Papers under review",
@@ -100,7 +108,19 @@ export function TaskDocumentsPanel({ locale, taskId }: TaskDocumentsPanelProps) 
           clusterNote: "Attached at cluster level — remove from Knowledge Base page",
           documents: "documents",
           maxSize: "Max size: 50MB",
+          integrityTitle: "Document integrity warning",
+          integrityDescription:
+            "Suspicious content was detected that may attempt to influence AI results. Review the file before continuing.",
+          integrityProceed: "Proceed anyway",
+          integrityDismiss: "Cancel",
+          integrityFindings: "Findings",
         };
+
+  const { data: integrityGate } = useQuery({
+    queryKey: ["task-integrity-gate", taskId],
+    queryFn: () => api.get<TaskIntegrityGateResponse>(`/tasks/${taskId}/integrity-gate`),
+    refetchInterval: 5000,
+  });
 
   const { data: documents = [] } = useQuery({
     queryKey: ["task-documents", taskId],
@@ -124,6 +144,18 @@ export function TaskDocumentsPanel({ locale, taskId }: TaskDocumentsPanelProps) 
     queryKey: ["kb-collections"],
     queryFn: () => api.get<KBCollectionResponse[]>("/kb/collections"),
     enabled: attachOpen,
+  });
+
+  const acknowledgeMutation = useMutation({
+    mutationFn: (payload: { documentId: string; body: AcknowledgeIntegrityRequest }) =>
+      api.post<TaskDocumentResponse>(
+        `/tasks/${taskId}/documents/${payload.documentId}/integrity-acknowledge`,
+        payload.body,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task-documents", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["task-integrity-gate", taskId] });
+    },
   });
 
   const uploadMutation = useMutation({
@@ -210,6 +242,24 @@ export function TaskDocumentsPanel({ locale, taskId }: TaskDocumentsPanelProps) 
 
   return (
     <section className="space-y-4">
+      {integrityGate?.blocked ? (
+        <div
+          role="alert"
+          className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40"
+        >
+          <h2 className="text-start text-sm font-semibold text-amber-900 dark:text-amber-100">
+            {copy.integrityTitle}
+          </h2>
+          <p className="mt-1 text-start text-xs text-amber-800 dark:text-amber-200">
+            {copy.integrityDescription}
+          </p>
+          <p className="mt-2 text-start text-xs text-amber-800 dark:text-amber-200">
+            {integrityGate.unacknowledged_documents.length}{" "}
+            {locale === "he" ? "מסמכים דורשים אישור לפני AI או workflow." : "document(s) require acknowledgment before AI or workflow."}
+          </p>
+        </div>
+      ) : null}
+
       <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="text-start text-sm font-semibold text-zinc-900 dark:text-zinc-50">
           {copy.paperTitle}
@@ -266,6 +316,40 @@ export function TaskDocumentsPanel({ locale, taskId }: TaskDocumentsPanelProps) 
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     {formatBytes(document.size_bytes)}
                   </p>
+                  {document.integrity &&
+                  document.integrity.status !== "clean" &&
+                  !document.integrity.acknowledged &&
+                  document.status === "ready" ? (
+                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/30">
+                      <p className="text-start text-xs font-medium text-amber-900 dark:text-amber-100">
+                        {copy.integrityTitle}: {document.integrity.status}
+                      </p>
+                      {document.integrity.findings.length > 0 ? (
+                        <ul className="mt-1 list-inside list-disc text-start text-[11px] text-amber-800 dark:text-amber-200">
+                          {document.integrity.findings.map((finding) => (
+                            <li key={`${finding.finding_type}-${finding.count}`}>
+                              {copy.integrityFindings}: {finding.finding_type} ({finding.count})
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            acknowledgeMutation.mutate({
+                              documentId: document.id,
+                              body: { choice: "proceed" },
+                            })
+                          }
+                          disabled={acknowledgeMutation.isPending}
+                          className="rounded bg-amber-700 px-2 py-1 text-[11px] font-medium text-white hover:bg-amber-800 disabled:opacity-50"
+                        >
+                          {copy.integrityProceed}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
                 <button
                   type="button"

@@ -33,7 +33,7 @@ def extract_pdf(file_bytes: bytes, filename: str) -> tuple[str, list[dict[str, A
 
 
 def extract_docx(file_bytes: bytes, filename: str) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
-    """Extract paragraphs and table cell text from DOCX."""
+    """Extract paragraphs, tables, headers, and footers from DOCX."""
     from docx import Document
     from docx.table import Table
     from docx.text.paragraph import Paragraph
@@ -57,6 +57,16 @@ def extract_docx(file_bytes: bytes, filename: str) -> tuple[str, list[dict[str, 
                 table_text = "\n".join(" | ".join(row) for row in rows)
                 tables.append({"text": table_text, "metadata": {"row_count": len(rows)}})
                 text_parts.append(table_text)
+
+    for section in document.sections:
+        for header_paragraph in section.header.paragraphs:
+            snippet = header_paragraph.text.strip()
+            if snippet:
+                text_parts.append(f"[Header] {snippet}")
+        for footer_paragraph in section.footer.paragraphs:
+            snippet = footer_paragraph.text.strip()
+            if snippet:
+                text_parts.append(f"[Footer] {snippet}")
 
     text = "\n\n".join(text_parts)
     metadata = _base_metadata(filename, "docx", len(file_bytes), element_count=len(text_parts))

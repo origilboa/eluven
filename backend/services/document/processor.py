@@ -11,12 +11,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.logging import get_logger
-from models.kb import DocumentChunk, KBDocument, KBDocumentStatus, TaskDocument, ThreadDocument, ThreadDocumentLoadStrategy
+from models.kb import (
+    DocumentChunk,
+    KBDocument,
+    KBDocumentStatus,
+    TaskDocument,
+    ThreadDocument,
+    ThreadDocumentLoadStrategy,
+)
 from models.task import Task
 from models.thread import Thread
+from schemas.document_integrity import IntegrityReport
 from services.document.chunker import DocumentChunker
 from services.document.embedder import DocumentEmbedder
 from services.document.extractor import DocumentExtractor
+from services.document.integrity import (
+    DocumentIntegrityService,
+    IntegrityScanInput,
+    extract_docx_run_signals,
+)
 from services.storage import StorageService
 
 logger = get_logger(__name__)
@@ -41,6 +54,42 @@ class DocumentProcessor:
         self._chunker = chunker or DocumentChunker()
         self._embedder = embedder or DocumentEmbedder()
         self._full_text_threshold = settings.thread_document_full_text_token_threshold
+        self._integrity = DocumentIntegrityService()
+
+    def _run_integrity_scan(
+        self,
+        *,
+        file_bytes: bytes,
+        filename: str,
+        file_type: str,
+        extracted_text: str,
+        chunk_texts: list[str] | None = None,
+    ) -> IntegrityReport:
+        docx_signals = []
+        if file_type == "docx":
+            docx_signals = extract_docx_run_signals(file_bytes)
+        return self._integrity.scan(
+            IntegrityScanInput(
+                text=extracted_text,
+                filename=filename,
+                file_type=file_type,
+                docx_run_signals=docx_signals,
+                chunk_texts=chunk_texts,
+            ),
+        )
+
+    @staticmethod
+    def _persist_integrity_report(
+        document: TaskDocument | KBDocument,
+        report: IntegrityReport,
+    ) -> None:
+        previous = IntegrityReport.from_storage(document.integrity_report)
+        document.integrity_report = report.to_storage()
+        if previous is None or previous.content_hash != report.content_hash:
+            document.integrity_acknowledged_hash = None
+            document.integrity_acknowledged_by = None
+            document.integrity_acknowledged_at = None
+            document.integrity_acknowledgment_choice = None
 
     async def process_kb_document(self, document_id: UUID, session: AsyncSession) -> None:
         """Extract, chunk, embed, and persist chunks for a KB document."""
@@ -75,6 +124,14 @@ class DocumentProcessor:
                 document_id=document.id,
                 collection_id=document.collection_id,
             )
+            integrity_report = self._run_integrity_scan(
+                file_bytes=file_bytes,
+                filename=document.filename,
+                file_type=document.file_type,
+                extracted_text=extracted.text,
+                chunk_texts=[chunk.content for chunk in chunks_data],
+            )
+            self._persist_integrity_report(document, integrity_report)
             embeddings = await asyncio.to_thread(
                 self._embedder.embed,
                 [chunk.content for chunk in chunks_data],
@@ -163,6 +220,13 @@ class DocumentProcessor:
             task_document.token_count = token_count
 
             if token_count <= self._full_text_threshold:
+                integrity_report = self._run_integrity_scan(
+                    file_bytes=file_bytes,
+                    filename=task_document.filename,
+                    file_type=task_document.file_type,
+                    extracted_text=extracted.text,
+                )
+                self._persist_integrity_report(task_document, integrity_report)
                 task_document.load_strategy = ThreadDocumentLoadStrategy.FULL_TEXT
                 await session.execute(
                     delete(DocumentChunk).where(
@@ -174,6 +238,7 @@ class DocumentProcessor:
                     "task_document_process_full_text",
                     task_document_id=str(task_document_id),
                     token_count=token_count,
+                    integrity_status=integrity_report.status.value,
                 )
                 return
 
@@ -183,6 +248,14 @@ class DocumentProcessor:
                 document_id=task_document.id,
                 collection_id=None,
             )
+            integrity_report = self._run_integrity_scan(
+                file_bytes=file_bytes,
+                filename=task_document.filename,
+                file_type=task_document.file_type,
+                extracted_text=extracted.text,
+                chunk_texts=[chunk.content for chunk in chunks_data],
+            )
+            self._persist_integrity_report(task_document, integrity_report)
             embeddings = await asyncio.to_thread(
                 self._embedder.embed,
                 [chunk.content for chunk in chunks_data],
@@ -220,6 +293,7 @@ class DocumentProcessor:
                 task_document_id=str(task_document_id),
                 token_count=token_count,
                 chunk_count=len(chunks_data),
+                integrity_status=integrity_report.status.value,
             )
         except Exception as exc:
             task_document.status = KBDocumentStatus.FAILED

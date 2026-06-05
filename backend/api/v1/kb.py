@@ -8,10 +8,12 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from starlette.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
+
 from api.deps import get_current_active_user, get_db
+from api.document_helpers import validate_upload_size
 from core.logging import get_logger
 from models.cluster import Cluster
 from models.kb import (
@@ -22,15 +24,22 @@ from models.kb import (
 )
 from models.task import Task
 from models.user import User
+from schemas.document_integrity import (
+    AcknowledgeIntegrityRequest,
+    IntegrityAcknowledgmentChoice,
+    IntegrityReport,
+    IntegrityStatus,
+)
 from schemas.kb import (
     AttachCollectionRequest,
     CreateCollectionRequest,
     KBAttachmentResponse,
-    KBDocumentResponse,
     KBCollectionResponse,
+    KBDocumentResponse,
     UpdateCollectionRequest,
 )
 from services.document.constants import SUPPORTED_FILE_TYPES
+from services.document.integrity_gate import integrity_summary_for_document
 from services.document_queue import enqueue_document_processing
 from services.storage import StorageService
 
@@ -181,6 +190,11 @@ def _document_response(document: KBDocument) -> KBDocumentResponse:
         status=document.status.value,
         chunk_count=document.chunk_count,
         version=document.version,
+        integrity=integrity_summary_for_document(
+            integrity_report=document.integrity_report,
+            integrity_acknowledged_hash=document.integrity_acknowledged_hash,
+            integrity_acknowledged_at=document.integrity_acknowledged_at,
+        ),
         created_at=document.created_at,
     )
 
@@ -346,6 +360,7 @@ async def upload_document(
     file_type = _file_type_from_filename(filename)
     file_bytes = await file.read()
     size_bytes = len(file_bytes)
+    validate_upload_size(size_bytes)
 
     document_id = uuid4()
     s3_key = f"{current_user.org_id}/kb/{collection_id}/{document_id}/{filename}"
@@ -501,3 +516,46 @@ async def detach_collection(
         attachment_id=str(attachment_id),
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/collections/{collection_id}/documents/{document_id}/integrity-acknowledge",
+    response_model=KBDocumentResponse,
+)
+async def acknowledge_kb_document_integrity(
+    collection_id: UUID,
+    document_id: UUID,
+    body: AcknowledgeIntegrityRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> KBDocumentResponse:
+    """Record user acknowledgment for a KB document integrity warning."""
+    await _get_owned_collection(db, collection_id, current_user)
+    document = await db.get(KBDocument, document_id)
+    if (
+        document is None
+        or document.collection_id != collection_id
+        or document.is_deleted
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    report = IntegrityReport.from_storage(document.integrity_report)
+    if report is None or report.status == IntegrityStatus.CLEAN:
+        return _document_response(document)
+
+    if body.choice == IntegrityAcknowledgmentChoice.PROCEED:
+        document.integrity_acknowledged_hash = report.content_hash
+        document.integrity_acknowledged_by = current_user.id
+        document.integrity_acknowledged_at = datetime.now(UTC).replace(tzinfo=None)
+        document.integrity_acknowledgment_choice = body.choice.value
+
+    logger.info(
+        "integrity_warning_acknowledged",
+        collection_id=str(collection_id),
+        document_id=str(document_id),
+        choice=body.choice.value,
+        integrity_status=report.status.value if report else None,
+        user_id=str(current_user.id),
+    )
+    await db.flush()
+    return _document_response(document)

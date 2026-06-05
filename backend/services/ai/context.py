@@ -14,6 +14,7 @@ import boto3  # pyright: ignore[reportMissingTypeStubs]
 import tiktoken
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from core.config import settings
 from core.logging import get_logger
 from models.instruction import InstructionLevel, InstructionSet, InstructionVersion
@@ -22,8 +23,11 @@ from models.memory import TaskMemoryEntry, TaskMemoryEntryType
 from models.task import Task
 from models.thread import MessageRole, Thread, ThreadMessage
 from models.user import User
+from schemas.document_integrity import IntegrityReport
+from services.ai.untrusted_content import wrap_untrusted_block
 from services.document.chunker import DocumentChunker
 from services.rag.retriever import ContextChunk, RAGRetriever
+from services.storage import StorageService
 from services.tags.context_tags import format_merged_tags_block, load_merged_tags_for_task
 
 if TYPE_CHECKING:
@@ -86,11 +90,22 @@ class ContextAssembler:
             or "en"
         )
 
-        platform_text = await self._instruction_for_level(
+        platform_global_text = await self._instruction_for_level(
+            session,
+            InstructionLevel.PLATFORM,
+            org_id=task.org_id,
+            thread_type=None,
+            match_mode="null_only",
+        )
+        platform_thread_text = await self._instruction_for_level(
             session,
             InstructionLevel.PLATFORM,
             org_id=task.org_id,
             thread_type=thread.thread_type,
+            match_mode="exact",
+        )
+        platform_text = "\n\n".join(
+            part for part in (platform_global_text, platform_thread_text) if part
         )
         org_text = await self._instruction_for_level(
             session,
@@ -161,8 +176,8 @@ class ContextAssembler:
         context_blocks = [
             block
             for block in (
-                _task_context_block(task),
-                tags_block,
+                _wrap_task_context_block(task),
+                _wrap_tags_block(tags_block, task.id),
                 memory_block,
                 thread_docs_block,
                 rag_block,
@@ -221,6 +236,7 @@ class ContextAssembler:
         cluster_id: UUID | None = None,
         task_id: UUID | None = None,
         thread_id: UUID | None = None,
+        match_mode: str = "default",
     ) -> str:
         query = select(InstructionSet).where(InstructionSet.level == level)
         if owner_org_id is not None:
@@ -235,7 +251,14 @@ class ContextAssembler:
             query = query.where(InstructionSet.thread_id == thread_id)
         if level == InstructionLevel.PLATFORM:
             query = query.where(InstructionSet.org_id == org_id)
-        if thread_type is None:
+        if match_mode == "null_only":
+            query = query.where(InstructionSet.thread_type.is_(None))
+        elif match_mode == "exact":
+            if thread_type is None:
+                query = query.where(InstructionSet.thread_type.is_(None))
+            else:
+                query = query.where(InstructionSet.thread_type == thread_type)
+        elif thread_type is None:
             query = query.where(InstructionSet.thread_type.is_(None))
         else:
             query = query.where(
@@ -310,7 +333,15 @@ class ContextAssembler:
                 document.file_type,
                 document.filename,
             )
-            sections.append(f"### {document.filename}\n{extracted.text}")
+            report = IntegrityReport.from_storage(document.integrity_report)
+            wrapped = wrap_untrusted_block(
+                extracted.text,
+                source_type="task_document",
+                source_id=str(document.id),
+                filename=document.filename,
+                integrity_report=report,
+            )
+            sections.append(f"### {document.filename}\n{wrapped}")
         return "\n\n".join(sections)
 
     async def _rag_block(
@@ -456,6 +487,25 @@ def _plain_text_block(text: str) -> dict[str, Any]:
     return {"type": "text", "text": text}
 
 
+def _wrap_task_context_block(task: Task) -> str:
+    raw = _task_context_block(task)
+    return wrap_untrusted_block(
+        raw,
+        source_type="task_metadata",
+        source_id=str(task.id),
+    )
+
+
+def _wrap_tags_block(tags_block: str, task_id: UUID) -> str:
+    if not tags_block:
+        return ""
+    return wrap_untrusted_block(
+        tags_block,
+        source_type="task_metadata",
+        source_id=f"{task_id}:tags",
+    )
+
+
 def _task_context_block(task: Task) -> str:
     lines = [
         "## Task context",
@@ -475,9 +525,19 @@ def _format_rag_chunks(chunks: list[ContextChunk]) -> str:
     for index, item in enumerate(chunks, start=1):
         meta = item.source_metadata
         source = meta.get("filename") or meta.get("document_id") or "unknown"
-        lines.append(
-            f"[{index}] (score={item.similarity:.3f}, source={source})\n{item.chunk.content}",
+        source_id = str(
+            meta.get("task_document_id")
+            or meta.get("document_id")
+            or meta.get("chunk_id")
+            or index,
         )
+        wrapped = wrap_untrusted_block(
+            item.chunk.content,
+            source_type="rag",
+            source_id=source_id,
+            filename=str(source) if source != "unknown" else None,
+        )
+        lines.append(f"[{index}] (score={item.similarity:.3f}, source={source})\n{wrapped}")
     return "\n\n".join(lines)
 
 

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.access import get_owned_task
 from api.deps import get_current_active_user, get_db
+from api.document_helpers import raise_if_integrity_blocked
 from core.logging import get_logger
 from models.task import Task
 from models.user import User
@@ -29,6 +30,7 @@ from schemas.workflows import (
     WorkflowThreadExecutionResponse,
 )
 from services.workflow.engine import WorkflowEngine, WorkflowEngineError
+from services.document.integrity_gate import evaluate_task_integrity_gate
 
 logger = get_logger(__name__)
 
@@ -170,6 +172,9 @@ async def start_workflow(
 ) -> WorkflowExecutionResponse:
     """Start a workflow execution for a task."""
     await get_owned_task(db, task_id, current_user)
+
+    gate = await evaluate_task_integrity_gate(db, task_id)
+    raise_if_integrity_blocked(gate)
 
     template = await db.get(WorkflowTemplate, body.template_id)
     if template is None:

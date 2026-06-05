@@ -104,6 +104,14 @@ class KBDocument(Base):
         nullable=True,
     )
     processing_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    integrity_report: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    integrity_acknowledged_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    integrity_acknowledged_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    integrity_acknowledged_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    integrity_acknowledgment_choice: Mapped[str | None] = mapped_column(String(20), nullable=True)
     uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     processed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -136,6 +144,14 @@ class TaskDocument(Base):
         str_enum(KBDocumentStatus),
         default=KBDocumentStatus.PENDING,
     )
+    integrity_report: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    integrity_acknowledged_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    integrity_acknowledged_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    integrity_acknowledged_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    integrity_acknowledgment_choice: Mapped[str | None] = mapped_column(String(20), nullable=True)
     uploaded_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

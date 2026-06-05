@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from schemas.document_integrity import IntegrityReportSummary
+
 
 class CreateCollectionRequest(BaseModel):
     """Request body for creating a KBCollection."""
@@ -50,6 +52,7 @@ class KBDocumentResponse(BaseModel):
     status: str
     chunk_count: int
     version: int
+    integrity: IntegrityReportSummary | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

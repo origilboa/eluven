@@ -173,7 +173,23 @@ export type ThreadDocumentResponse = {
   created_at: string;
 };
 
-export type TaskDocumentResponse = ThreadDocumentResponse;
+export type IntegrityFinding = {
+  finding_type: string;
+  count: number;
+  detail: string | null;
+};
+
+export type IntegrityReportSummary = {
+  status: "clean" | "warning" | "review_required";
+  findings: IntegrityFinding[];
+  content_hash: string | null;
+  acknowledged: boolean;
+  acknowledged_at: string | null;
+};
+
+export type TaskDocumentResponse = ThreadDocumentResponse & {
+  integrity: IntegrityReportSummary | null;
+};
 
 export type TaskThreadDocumentResponse = ThreadDocumentResponse & {
   thread_id: string;
@@ -315,7 +331,25 @@ export type KBDocumentResponse = {
   status: string;
   chunk_count: number;
   version: number;
+  integrity: IntegrityReportSummary | null;
   created_at: string;
+};
+
+export type TaskIntegrityDocumentSummary = {
+  document_id: string;
+  filename: string;
+  source: string;
+  integrity_status: "clean" | "warning" | "review_required";
+  findings: IntegrityFinding[];
+};
+
+export type TaskIntegrityGateResponse = {
+  blocked: boolean;
+  unacknowledged_documents: TaskIntegrityDocumentSummary[];
+};
+
+export type AcknowledgeIntegrityRequest = {
+  choice: "proceed" | "cancel";
 };
 
 export type InstructionVersionResponse = {

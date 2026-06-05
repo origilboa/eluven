@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from schemas.document_integrity import IntegrityReportSummary
 from schemas.tasks import TaskMemoryEntryResponse
 
 
@@ -93,6 +94,7 @@ class TaskDocumentResponse(BaseModel):
     status: str
     load_strategy: str
     token_count: int | None
+    integrity: IntegrityReportSummary | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

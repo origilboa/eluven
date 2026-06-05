@@ -95,6 +95,16 @@ def assemble_context(thread: Thread, task: Task, message: str) -> AssembledConte
     )
 ```
 
+## Untrusted content trust boundaries
+
+Manuscripts, KB material, RAG chunks, and task metadata are **untrusted evidence** — never instructions.
+
+- Scan at processing time via `DocumentIntegrityService` (see `docs/spec/untrusted-content-integrity-v1.md`)
+- Wrap all untrusted blocks with `wrap_untrusted_block()` in `services/ai/untrusted_content.py`
+- Platform integrity directive (`thread_type = NULL`) is the first cached system block
+- Gate AI stream and workflow start until integrity warnings are acknowledged (`integrity_gate.py`)
+- Never log flagged document text — log finding types and counts only
+
 ## Prompt caching — always cache these
 
 Platform, org, and user level instructions are identical across calls for a given user. Use Bedrock prompt caching:

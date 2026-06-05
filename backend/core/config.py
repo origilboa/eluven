@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     workflow_max_retries: int = 3
     workflow_confidence_threshold: float = 0.6
 
+    # Document integrity
+    document_max_upload_bytes: int = 50 * 1024 * 1024
+    integrity_min_font_half_points: int = 12
+    integrity_stuffing_min_chars: int = 500
+    integrity_stuffing_hidden_chars: int = 200
+    integrity_stuffing_max_chars: int = 500_000
+    integrity_imperative_density_threshold: float = 0.15
+    integrity_warning_threshold: int = 5
+
     # Auth
     nextauth_secret: str
     jwt_algorithm: str = "HS256"
