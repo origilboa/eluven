@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   streamInstructionAssistant,
@@ -81,6 +81,11 @@ export function InstructionAssistantPanel({
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [remediationMode, setRemediationMode] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, statusMessage, error, isStreaming]);
 
   const copy = useMemo(
     () =>
@@ -277,8 +282,8 @@ export function InstructionAssistantPanel({
   }
 
   return (
-    <aside className="flex h-full min-h-[20rem] flex-col rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="border-b border-zinc-200 px-4 py-3 text-start dark:border-zinc-800">
+    <aside className="flex max-h-[min(36rem,70vh)] min-h-[20rem] flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="shrink-0 border-b border-zinc-200 px-4 py-3 text-start dark:border-zinc-800">
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{copy.title}</h3>
         <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{copy.subtitle}</p>
         {remediationMode ? (
@@ -286,7 +291,7 @@ export function InstructionAssistantPanel({
         ) : null}
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {!messages.length ? (
           <p className="text-start text-sm text-zinc-500 dark:text-zinc-400">{copy.empty}</p>
         ) : (
@@ -309,9 +314,10 @@ export function InstructionAssistantPanel({
         {error ? (
           <p className="text-start text-sm text-red-600 dark:text-red-400">{error}</p>
         ) : null}
+        <div ref={messagesEndRef} />
       </div>
 
-      <div className="space-y-2 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
+      <div className="shrink-0 space-y-2 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
         {integrityIssues.length > 0 && !remediationMode ? (
           <button
             type="button"

@@ -27,6 +27,8 @@ type InstructionAuthoringWorkbenchProps = {
   savingLabel: string;
   showSaveButton?: boolean;
   gate?: InstructionDraftGateState;
+  onCancel?: () => void;
+  cancelLabel?: string;
 };
 
 export function InstructionAuthoringWorkbench({
@@ -45,6 +47,8 @@ export function InstructionAuthoringWorkbench({
   savingLabel,
   showSaveButton = true,
   gate: externalGate,
+  onCancel,
+  cancelLabel,
 }: InstructionAuthoringWorkbenchProps) {
   const internalGate = useInstructionDraftGate(scope, draftContent, locale);
   const gate = externalGate ?? internalGate;
@@ -147,29 +151,40 @@ export function InstructionAuthoringWorkbench({
             </div>
           ) : null}
 
-          <button
-            type="button"
-            onClick={() => void gate.runIntegrityCheck(draftContent)}
-            disabled={disabled || gate.status === "checking" || !draftContent.trim()}
-            className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
-          >
-            {gate.status === "checking" ? copy.gateChecking : copy.runCheck}
-          </button>
-
           {footer}
 
-          {showSaveButton ? (
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                type="submit"
-                disabled={savePending || !gate.canSave || disabled}
-                title={!gate.canSave ? copy.saveBlocked : undefined}
-                className="inline-flex h-10 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
+                type="button"
+                onClick={() => void gate.runIntegrityCheck(draftContent)}
+                disabled={disabled || gate.status === "checking" || !draftContent.trim()}
+                className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
               >
-                {savePending ? savingLabel : saveLabel}
+                {gate.status === "checking" ? copy.gateChecking : copy.runCheck}
               </button>
+              {showSaveButton ? (
+                <button
+                  type="submit"
+                  disabled={savePending || !gate.canSave || disabled}
+                  title={!gate.canSave ? copy.saveBlocked : undefined}
+                  className="inline-flex h-10 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
+                >
+                  {savePending ? savingLabel : saveLabel}
+                </button>
+              ) : null}
             </div>
-          ) : null}
+            {onCancel ? (
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={disabled || savePending}
+                className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+              >
+                {cancelLabel}
+              </button>
+            ) : null}
+          </div>
         </form>
       }
       assistant={

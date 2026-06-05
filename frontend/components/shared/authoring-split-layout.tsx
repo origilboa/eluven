@@ -14,8 +14,8 @@ export function AuthoringSplitLayout({ form, assistant }: AuthoringSplitLayoutPr
 
   return (
     <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-      <div className="space-y-4">{form}</div>
-      {assistant}
+      <div className="min-w-0 space-y-4">{form}</div>
+      <div className="min-h-0 min-w-0 lg:sticky lg:top-4">{assistant}</div>
     </div>
   );
 }

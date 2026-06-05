@@ -241,6 +241,8 @@ export function InstructionSetEditor({
                   savePending={createMutation.isPending}
                   saveLabel={copy.save}
                   savingLabel={copy.saving}
+                  onCancel={() => setEditing(false)}
+                  cancelLabel={copy.cancel}
                   footer={
                     <>
                       <div className="space-y-2 text-start">
@@ -260,15 +262,6 @@ export function InstructionSetEditor({
                       {error ? (
                         <p className="text-start text-sm text-red-600 dark:text-red-400">{error}</p>
                       ) : null}
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setEditing(false)}
-                          className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-300 px-4 text-sm font-medium"
-                        >
-                          {copy.cancel}
-                        </button>
-                      </div>
                     </>
                   }
                 />
