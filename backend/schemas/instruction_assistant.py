@@ -52,3 +52,4 @@ class InstructionAssistantStreamRequest(BaseModel):
     draft_content: str = ""
     messages: list[AuthoringChatMessage] = Field(default_factory=list)
     locale: Literal["en", "he"] = "en"
+    integrity_review: bool = False

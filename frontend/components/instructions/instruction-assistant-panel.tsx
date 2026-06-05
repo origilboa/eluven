@@ -67,6 +67,10 @@ export function InstructionAssistantPanel({
             apply: "החל על הטיוטה",
             applyConfirm: "להחליף את תוכן ההוראות בטיוטה שהעוזר הציע?",
             statusPreparing: "מכין תשובה…",
+            reviewIntegrity: "בדיקת שלמות טיוטה",
+            reviewIntegrityPrompt:
+              "הרץ בדיקת שלמות על הטיוטה הנוכחית לפי רשימת הבדיקה המלאה.",
+            reviewIntegrityEmpty: "הוסף טקסט לטיוטה לפני בדיקת שלמות.",
           }
         : {
             title: "Instruction assistant",
@@ -78,6 +82,10 @@ export function InstructionAssistantPanel({
             apply: "Apply to draft",
             applyConfirm: "Replace the instruction textarea with the assistant's proposed draft?",
             statusPreparing: "Preparing response…",
+            reviewIntegrity: "Review draft integrity",
+            reviewIntegrityPrompt:
+              "Run an integrity review on my current draft using the full checklist.",
+            reviewIntegrityEmpty: "Add draft text before running an integrity review.",
           },
     [locale],
   );
@@ -119,8 +127,11 @@ export function InstructionAssistantPanel({
     }
   }, []);
 
-  async function sendMessage() {
-    const trimmed = input.trim();
+  async function sendMessage(
+    messageText?: string,
+    options?: { integrityReview?: boolean },
+  ) {
+    const trimmed = (messageText ?? input).trim();
     if (!trimmed || isStreaming || disabled) {
       return;
     }
@@ -138,7 +149,9 @@ export function InstructionAssistantPanel({
     ];
 
     setMessages(nextMessages);
-    setInput("");
+    if (!messageText) {
+      setInput("");
+    }
     setError(null);
     setIsStreaming(true);
     setStatusMessage(copy.statusPreparing);
@@ -155,6 +168,7 @@ export function InstructionAssistantPanel({
               content: message.content,
             })),
           locale,
+          integrity_review: options?.integrityReview ?? false,
         },
         (streamEvent) => handleStreamEvent(streamEvent, assistantId),
       );
@@ -214,6 +228,20 @@ export function InstructionAssistantPanel({
       </div>
 
       <div className="space-y-2 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <button
+          type="button"
+          onClick={() => {
+            if (!draftContent.trim()) {
+              setError(copy.reviewIntegrityEmpty);
+              return;
+            }
+            void sendMessage(copy.reviewIntegrityPrompt, { integrityReview: true });
+          }}
+          disabled={disabled || isStreaming || !draftContent.trim()}
+          className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+        >
+          {copy.reviewIntegrity}
+        </button>
         {lastAssistantMessage && !isStreaming ? (
           <button
             type="button"

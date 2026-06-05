@@ -436,6 +436,7 @@ export type InstructionAssistantStreamRequest = {
   draft_content: string;
   messages: { role: "user" | "assistant"; content: string }[];
   locale: "en" | "he";
+  integrity_review?: boolean;
 };
 
 export type AdminOrgResponse = {

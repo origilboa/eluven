@@ -10,7 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.access import get_owned_cluster, get_owned_task, get_owned_thread
-from models.activity import ActivityLibraryEntry
+from models.activity import ActivityLibraryEntry, ActivityPrompt
 from models.instruction import InstructionLevel, InstructionSet, InstructionVersion
 from models.task import Task
 from models.user import User, UserRole
@@ -86,6 +86,7 @@ class InstructionAuthoringContext:
         draft_content: str,
         chat_messages: list[dict[str, str]],
         locale: str,
+        integrity_review: bool = False,
     ) -> AuthoringAssembledContext:
         """Resolve scope, auth, and compose system prompt."""
         if scope.authoring_target == AuthoringTarget.ACTIVITY_LIBRARY_DEFAULT:
@@ -96,6 +97,7 @@ class InstructionAuthoringContext:
                 draft_content=draft_content,
                 chat_messages=chat_messages,
                 locale=locale,
+                integrity_review=integrity_review,
             )
 
         editable_level = InstructionLevel(scope.level)
@@ -132,7 +134,11 @@ class InstructionAuthoringContext:
             f"## Level brief ({editable_level.value})\n{level_brief}".strip()
             if level_brief
             else "",
-            f"## Session\nEditable layer: {editable_level.value}\nWorking language: {locale}",
+            _session_block(
+                editable_level=editable_level,
+                locale=locale,
+                integrity_review=integrity_review,
+            ),
             metadata_block,
             "\n\n".join(inherited_blocks),
             f"## Current draft ({editable_level.value} only)\n{draft_content}".strip()
@@ -244,6 +250,7 @@ class InstructionAuthoringContext:
         draft_content: str,
         chat_messages: list[dict[str, str]],
         locale: str,
+        integrity_review: bool = False,
     ) -> AuthoringAssembledContext:
         """Build context for ActivityLibrary default_instruction_content authoring."""
         editable_level = InstructionLevel(scope.level)
@@ -324,7 +331,12 @@ class InstructionAuthoringContext:
             f"## Level brief ({editable_level.value})\n{level_brief}".strip()
             if level_brief
             else "",
-            f"## Session\nEditable target: activity_library_default\nWorking language: {locale}",
+            _session_block(
+                editable_level=editable_level,
+                locale=locale,
+                integrity_review=integrity_review,
+                authoring_target="activity_library_default",
+            ),
             metadata_block,
             "\n\n".join(inherited_blocks),
             "## Current draft (default_instruction_content only)\n"
@@ -403,6 +415,12 @@ class InstructionAuthoringContext:
             lines.append(f"Activity display name: {activity.display_name}")
             if activity.description:
                 lines.append(f"Activity description: {activity.description}")
+            config_block = _format_activity_configuration(activity)
+            if config_block:
+                lines.append(config_block)
+            prompt_block = await self._format_activity_prompts(session, activity.id)
+            if prompt_block:
+                lines.append(prompt_block)
             if activity.default_instruction_content:
                 lines.append(
                     "Activity default instruction template:\n"
@@ -495,6 +513,62 @@ class InstructionAuthoringContext:
             return ""
         version = await session.get(InstructionVersion, instruction_set.active_version_id)
         return version.content if version is not None else ""
+
+    async def _format_activity_prompts(
+        self,
+        session: AsyncSession,
+        activity_entry_id: UUID,
+    ) -> str:
+        result = await session.execute(
+            select(ActivityPrompt)
+            .where(ActivityPrompt.activity_entry_id == activity_entry_id)
+            .order_by(ActivityPrompt.sequence_index),
+        )
+        prompts = list(result.scalars().all())
+        if not prompts:
+            return ""
+        lines = ["Activity prompts (read-only — Prompts tab, not instructions):"]
+        for index, prompt in enumerate(prompts, start=1):
+            lines.append(f"{index}. [{prompt.stage.value}] {prompt.prompt_text}")
+        return "\n".join(lines)
+
+
+def _session_block(
+    *,
+    editable_level: InstructionLevel,
+    locale: str,
+    integrity_review: bool,
+    authoring_target: str | None = None,
+) -> str:
+    target_line = (
+        f"Editable target: {authoring_target}\n"
+        if authoring_target
+        else f"Editable layer: {editable_level.value}\n"
+    )
+    return (
+        "## Session\n"
+        f"{target_line}"
+        f"Working language: {locale}\n"
+        f"Integrity review: {'active' if integrity_review else 'inactive'}"
+    )
+
+
+def _format_activity_configuration(activity: ActivityLibraryEntry) -> str:
+    lines = [
+        "Activity configuration (read-only — Settings tab, not instructions):",
+        f"default_model_id: {activity.default_model_id}",
+    ]
+    if activity.fallback_model_id:
+        lines.append(f"fallback_model_id: {activity.fallback_model_id}")
+    if activity.token_budget is not None:
+        lines.append(f"token_budget: {activity.token_budget}")
+    lines.append(
+        "token_budget_warning_threshold: "
+        f"{activity.token_budget_warning_threshold}",
+    )
+    lines.append(f"supports_automation: {str(activity.supports_automation).lower()}")
+    lines.append(f"scope: {activity.scope}")
+    return "\n".join(lines)
 
 
 @dataclass

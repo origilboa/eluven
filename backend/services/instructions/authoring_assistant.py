@@ -27,6 +27,20 @@ from services.instructions.authoring_context import (
 logger = get_logger(__name__)
 
 
+def _bedrock_stream_error_message(exc: BaseException) -> str:
+    """Map Bedrock client errors to user-facing stream messages."""
+    if isinstance(exc, ClientError):
+        error_message = exc.response.get("Error", {}).get("Message", str(exc))
+        if "use case" in error_message.lower():
+            return (
+                "This AI model is not enabled for your AWS account yet. "
+                "Complete the Anthropic use-case form in the Bedrock console, "
+                "or contact your administrator."
+            )
+        return f"Bedrock request failed: {error_message}"
+    return "Bedrock streaming request failed"
+
+
 class InstructionAuthoringAssistant:
     """Stateless instruction authoring assistant — no DB persistence of chat."""
 
@@ -61,6 +75,7 @@ class InstructionAuthoringAssistant:
             draft_content=request.draft_content,
             chat_messages=chat_messages,
             locale=request.locale,
+            integrity_review=request.integrity_review,
         )
 
         if not chat_messages:
@@ -77,6 +92,7 @@ class InstructionAuthoringAssistant:
             thread_type=request.scope.thread_type,
             charter_version=context.charter_version,
             model_id=model_id,
+            integrity_review=request.integrity_review,
         )
 
         full_text_parts: list[str] = []
@@ -113,7 +129,7 @@ class InstructionAuthoringAssistant:
                 error=str(exc),
                 latency_ms=latency_ms,
             )
-            raise RuntimeError("Bedrock streaming request failed") from exc
+            raise RuntimeError(_bedrock_stream_error_message(exc)) from exc
 
         latency_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
