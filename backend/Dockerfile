@@ -39,7 +39,7 @@ ENV TIKTOKEN_CACHE_DIR=/usr/local/tiktoken_cache
 RUN mkdir -p "$TIKTOKEN_CACHE_DIR" && python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
 # Bust remote build cache when backend sources change.
-ARG BACKEND_CACHE_BUST=20260603
+ARG BACKEND_CACHE_BUST=20260605
 COPY backend/ .
 COPY scripts /app/scripts
 COPY docs/instructions /app/docs/instructions
