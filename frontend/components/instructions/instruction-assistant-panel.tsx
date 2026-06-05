@@ -30,19 +30,48 @@ type InstructionAssistantPanelProps = {
   onIntegrityIssuesChange?: () => void;
 };
 
-const PROPOSED_DRAFT_MARKER = "## Proposed instruction draft";
-const PROPOSED_PARTIAL_FIX_MARKER = "## Proposed partial fix";
+const PROPOSED_PARTIAL_FIX_MARKERS = ["## Proposed partial fix", "# Proposed partial fix"];
+const PROPOSED_DRAFT_MARKERS = ["## Proposed instruction draft", "# Proposed instruction draft"];
+
+function findProposalMarker(
+  content: string,
+  markers: string[],
+): { marker: string; index: number } | null {
+  let best: { marker: string; index: number } | null = null;
+  for (const marker of markers) {
+    const index = content.indexOf(marker);
+    if (index >= 0 && (best === null || index < best.index)) {
+      best = { marker, index };
+    }
+  }
+  return best;
+}
+
+function stripProposalCommentary(text: string): string {
+  const withoutRule = text.split(/\n---\n/)[0] ?? text;
+  const withoutChangelog = withoutRule.split(/\n\*\*Changes made:\*\*/i)[0] ?? withoutRule;
+  return withoutChangelog.trim();
+}
+
+function hasApplyableProposal(content: string): boolean {
+  return (
+    findProposalMarker(content, PROPOSED_PARTIAL_FIX_MARKERS) !== null ||
+    findProposalMarker(content, PROPOSED_DRAFT_MARKERS) !== null
+  );
+}
 
 function extractProposedDraft(content: string): string {
-  const partialIndex = content.indexOf(PROPOSED_PARTIAL_FIX_MARKER);
-  if (partialIndex >= 0) {
-    return content.slice(partialIndex + PROPOSED_PARTIAL_FIX_MARKER.length).trim();
+  const partial = findProposalMarker(content, PROPOSED_PARTIAL_FIX_MARKERS);
+  if (partial) {
+    const raw = content.slice(partial.index + partial.marker.length).trim();
+    return stripProposalCommentary(raw);
   }
-  const markerIndex = content.indexOf(PROPOSED_DRAFT_MARKER);
-  if (markerIndex >= 0) {
-    return content.slice(markerIndex + PROPOSED_DRAFT_MARKER.length).trim();
+  const draft = findProposalMarker(content, PROPOSED_DRAFT_MARKERS);
+  if (draft) {
+    const raw = content.slice(draft.index + draft.marker.length).trim();
+    return stripProposalCommentary(raw);
   }
-  return content.trim();
+  return "";
 }
 
 function applyPartialFix(base: string, fix: string): string {
@@ -139,7 +168,12 @@ export function InstructionAssistantPanel({
   );
 
   const hasPartialFix = Boolean(
-    lastAssistantMessage?.content.includes(PROPOSED_PARTIAL_FIX_MARKER),
+    lastAssistantMessage &&
+      findProposalMarker(lastAssistantMessage.content, PROPOSED_PARTIAL_FIX_MARKERS),
+  );
+
+  const canApplyProposal = Boolean(
+    lastAssistantMessage && hasApplyableProposal(lastAssistantMessage.content),
   );
 
   const handleStreamEvent = useCallback((event: StreamEvent, assistantId: string) => {
@@ -347,7 +381,7 @@ export function InstructionAssistantPanel({
             </button>
           </>
         ) : null}
-        {lastAssistantMessage && !isStreaming ? (
+        {lastAssistantMessage && !isStreaming && canApplyProposal ? (
           <>
             {hasPartialFix ? (
               <button

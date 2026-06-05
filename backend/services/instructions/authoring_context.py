@@ -150,6 +150,7 @@ class InstructionAuthoringContext:
             metadata_block,
             "\n\n".join(inherited_blocks),
             _remediation_block(integrity_remediation, integrity_issues_json),
+            _completeness_block(completeness_review),
             f"## Current draft ({editable_level.value} only)\n{draft_content}".strip()
             if draft_content.strip()
             else f"## Current draft ({editable_level.value} only)\n(empty)",
@@ -354,6 +355,7 @@ class InstructionAuthoringContext:
             metadata_block,
             "\n\n".join(inherited_blocks),
             _remediation_block(integrity_remediation, integrity_issues_json),
+            _completeness_block(completeness_review),
             "## Current draft (default_instruction_content only)\n"
             + (draft_content.strip() if draft_content.strip() else "(empty)"),
         ]
@@ -569,6 +571,21 @@ def _session_block(
         f"Integrity review: {'active' if integrity_review else 'inactive'}\n"
         f"Completeness review: {'active' if completeness_review else 'inactive'}\n"
         f"Integrity remediation: {'active' if integrity_remediation else 'inactive'}"
+    )
+
+
+def _completeness_block(completeness_review: bool) -> str:
+    if not completeness_review:
+        return ""
+    return (
+        "## Completeness review mode\n"
+        "Compare the current draft to inherited layers and the level brief. "
+        "Report gaps and wrong-bucket issues as bullets. "
+        "Do NOT output ## Proposed instruction draft or # Proposed instruction draft. "
+        "Do NOT claim the draft is integrity-clean or ready to save. "
+        "Do NOT append changelogs, 'Changes made', or meta-commentary. "
+        "Optional additive instruction prose ONLY under ## Proposed partial fix "
+        "(no text below that block)."
     )
 
 
