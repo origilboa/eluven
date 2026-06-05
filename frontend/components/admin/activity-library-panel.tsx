@@ -68,6 +68,16 @@ function promptsFromDetail(detail: AdminActivityLibraryDetailResponse): PromptDr
   }));
 }
 
+function buildPromptsPayload(prompts: PromptDraft[]): ReplaceActivityPromptsRequest {
+  return {
+    prompts: prompts
+      .filter((prompt) => prompt.prompt_text.trim())
+      .map((prompt) => ({
+        prompt_text: prompt.prompt_text.trim(),
+      })),
+  };
+}
+
 function parseTokenBudget(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -111,6 +121,7 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
           activityPrompts: "הצעות פעילות",
           addPrompt: "הוסף הצעה",
           prompt: "הצעה",
+          remove: "הסר",
           saveEntry: "שמור הגדרות",
           savePrompts: "שמור הצעות",
           saving: "שומר…",
@@ -144,6 +155,7 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
           activityPrompts: "Activity prompts",
           addPrompt: "Add prompt",
           prompt: "Prompt",
+          remove: "Remove",
           saveEntry: "Save settings",
           savePrompts: "Save prompts",
           saving: "Saving…",
@@ -483,7 +495,32 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
                     className="space-y-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800"
                   >
                     <label className="block text-start text-sm">
-                      <span className="font-medium">{copy.prompt}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{copy.prompt}</span>
+                        <button
+                          type="button"
+                          disabled={
+                            promptsMutation.isPending ||
+                            (form.supports_automation && prompts.length <= 1)
+                          }
+                          onClick={() => {
+                            if (!selectedId) {
+                              return;
+                            }
+                            const nextPrompts = prompts.filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            );
+                            setPrompts(nextPrompts);
+                            promptsMutation.mutate({
+                              entryId: selectedId,
+                              body: buildPromptsPayload(nextPrompts),
+                            });
+                          }}
+                          className="text-xs font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-zinc-400 disabled:no-underline dark:text-red-400 dark:disabled:text-zinc-600"
+                        >
+                          {copy.remove}
+                        </button>
+                      </div>
                       <textarea
                         required
                         rows={2}
@@ -508,13 +545,7 @@ export function ActivityLibraryPanel({ locale, userRole }: ActivityLibraryPanelP
                   onClick={() =>
                     promptsMutation.mutate({
                       entryId: selectedId,
-                      body: {
-                        prompts: prompts
-                          .filter((prompt) => prompt.prompt_text.trim())
-                          .map((prompt) => ({
-                            prompt_text: prompt.prompt_text.trim(),
-                          })),
-                      },
+                      body: buildPromptsPayload(prompts),
                     })
                   }
                   className="inline-flex h-9 items-center rounded-lg border px-3 text-sm font-medium"
