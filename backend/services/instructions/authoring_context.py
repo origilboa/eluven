@@ -597,8 +597,13 @@ def _remediation_block(
         return ""
     return (
         "## Integrity remediation context\n"
-        "Help the user fix these integrity issues. Ask clarifying questions only when needed. "
-        "Propose fixes under ## Proposed instruction draft or ## Proposed partial fix.\n"
+        "The structured integrity check failed with these issues. "
+        "When the user asks to correct or rewrite the draft, address EVERY issue. "
+        "Remove wrong-bucket content entirely — do not paraphrase token budgets or model routing. "
+        "Move layer-misplaced content to the correct layer or omit it from this draft. "
+        "Output a clean full replacement under ## Proposed instruction draft "
+        "(instruction prose only — no changelogs, no 'ready to save'). "
+        "Or use ## Proposed partial fix for small additive edits only.\n"
         f"Issues JSON:\n{integrity_issues_json}"
     )
 

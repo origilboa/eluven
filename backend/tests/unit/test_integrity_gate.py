@@ -52,6 +52,19 @@ def test_scope_keys_match_instruction_set_and_assistant_scope() -> None:
     )
 
 
+def test_deterministic_issues_flag_budget_xml_tag() -> None:
+    issues = deterministic_integrity_issues(
+        "<budget:token_budget>200000</budget:token_budget>",
+    )
+    assert len(issues) == 1
+    assert issues[0]["code"] == "wrong_bucket"
+
+
+def test_deterministic_issues_flag_model_routing_prose() -> None:
+    issues = deterministic_integrity_issues("Prefer Sonnet for long analyses.")
+    assert any(issue["title"] == "Model routing in instructions" for issue in issues)
+
+
 def test_deterministic_issues_flag_model_ids() -> None:
     issues = deterministic_integrity_issues(
         "Use us.anthropic.claude-sonnet for all replies.",

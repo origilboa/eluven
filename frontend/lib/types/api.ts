@@ -510,6 +510,7 @@ export type InstructionAssistantStreamRequest = {
   locale: "en" | "he";
   integrity_review?: boolean;
   completeness_review?: boolean;
+  integrity_issues?: InstructionIntegrityIssue[];
 };
 
 export type AdminOrgResponse = {

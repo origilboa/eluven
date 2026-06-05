@@ -85,6 +85,15 @@ function applyPartialFix(base: string, fix: string): string {
   return `${base.trimEnd()}\n\n${trimmedFix}`;
 }
 
+function draftHasKnownIntegrityProblems(content: string): boolean {
+  return (
+    /<budget:token_budget/i.test(content) ||
+    /token\s*budget/i.test(content) ||
+    /(?:us\.)?anthropic\.claude/i.test(content) ||
+    /model\s*routing|default\s+to\s+(sonnet|haiku)/i.test(content)
+  );
+}
+
 function StreamingDots() {
   return (
     <span className="inline-flex items-center gap-1" aria-hidden="true">
@@ -257,6 +266,9 @@ export function InstructionAssistantPanel({
           (streamEvent) => handleStreamEvent(streamEvent, assistantId),
         );
       } else {
+        const injectIssues =
+          integrityIssues.length > 0 && !options?.completenessReview && !remediationMode;
+
         await streamInstructionAssistant(
           {
             scope,
@@ -264,6 +276,7 @@ export function InstructionAssistantPanel({
             messages: chatPayload,
             locale,
             completeness_review: options?.completenessReview ?? false,
+            integrity_issues: injectIssues ? integrityIssues : undefined,
           },
           (streamEvent) => handleStreamEvent(streamEvent, assistantId),
         );
@@ -283,6 +296,14 @@ export function InstructionAssistantPanel({
     }
     const proposed = extractProposedDraft(lastAssistantMessage.content);
     if (!proposed) {
+      return;
+    }
+    if (draftHasKnownIntegrityProblems(proposed)) {
+      setError(
+        locale === "he"
+          ? "הטיוטה המוצעת עדיין מכילה תגי תקציב או ניתוב מודל — בקש מהעוזר לתקן שוב."
+          : "The proposed draft still contains token budget or model routing text — ask the assistant to fix again.",
+      );
       return;
     }
     const confirmText = partial ? copy.applyPartialConfirm : copy.applyConfirm;

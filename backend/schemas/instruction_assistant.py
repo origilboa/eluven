@@ -115,6 +115,7 @@ class InstructionAssistantStreamRequest(BaseModel):
     locale: Literal["en", "he"] = "en"
     integrity_review: bool = False
     completeness_review: bool = False
+    integrity_issues: list[InstructionIntegrityIssue] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _exclusive_review_modes(self) -> InstructionAssistantStreamRequest:
@@ -126,5 +127,8 @@ class InstructionAssistantStreamRequest(BaseModel):
         )
         if active > 1:
             msg = "Only one review mode per stream request"
+            raise ValueError(msg)
+        if self.integrity_issues and (self.integrity_review or self.completeness_review):
+            msg = "integrity_issues cannot be combined with review modes"
             raise ValueError(msg)
         return self

@@ -65,6 +65,15 @@ class InstructionAuthoringAssistant:
         if not chat_messages:
             raise ValueError("At least one chat message is required")
 
+        integrity_issues_json: str | None = None
+        integrity_remediation = False
+        if request.integrity_issues:
+            integrity_remediation = True
+            integrity_issues_json = json.dumps(
+                [issue.model_dump() for issue in request.integrity_issues],
+                default=str,
+            )
+
         context = await self._context_builder.build(
             session,
             scope=request.scope,
@@ -74,6 +83,8 @@ class InstructionAuthoringAssistant:
             locale=request.locale,
             integrity_review=request.integrity_review,
             completeness_review=request.completeness_review,
+            integrity_remediation=integrity_remediation,
+            integrity_issues_json=integrity_issues_json,
         )
 
         async for chunk in self._stream_with_context(

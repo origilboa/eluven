@@ -21,7 +21,11 @@ _BEDROCK_MODEL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _TOKEN_BUDGET_PATTERN = re.compile(
-    r"token\s*budget|max\s*tokens?\s*[:=]\s*\d+",
+    r"token\s*budget|max\s*tokens?\s*[:=]\s*\d+|<budget:token_budget[\s>]",
+    re.IGNORECASE,
+)
+_MODEL_ROUTING_PROSE_PATTERN = re.compile(
+    r"model\s*routing|default\s+to\s+(sonnet|haiku|claude)|prefer\s+(sonnet|haiku)",
     re.IGNORECASE,
 )
 
@@ -220,6 +224,23 @@ def deterministic_integrity_issues(content: str) -> list[dict[str, str]]:
                 "recommendation": (
                     "Remove model IDs from this draft and set default_model_id "
                     "in the Activity Settings tab instead."
+                ),
+                "fix_strategy": "relocate_to_settings",
+                "suggested_target": "Settings",
+            },
+        )
+    if _MODEL_ROUTING_PROSE_PATTERN.search(content):
+        issues.append(
+            {
+                "code": "wrong_bucket",
+                "severity": "blocking",
+                "title": "Model routing in instructions",
+                "message": (
+                    "Model routing preferences belong in Activity Settings, not instruction prose."
+                ),
+                "recommendation": (
+                    "Remove model routing language from this draft and set default_model_id "
+                    "in Activity Settings."
                 ),
                 "fix_strategy": "relocate_to_settings",
                 "suggested_target": "Settings",
