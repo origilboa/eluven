@@ -2,24 +2,30 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+import json
+from collections.abc import AsyncIterator
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.access import get_owned_cluster, get_owned_task, get_owned_thread
 from api.deps import get_current_active_user, get_db
+from core.config import settings
 from core.logging import get_logger
 from models.instruction import InstructionLevel, InstructionSet, InstructionVersion
 from models.user import User, UserRole
+from schemas.instruction_assistant import InstructionAssistantStreamRequest
 from schemas.instructions import (
     ActivateInstructionVersionRequest,
     CreateInstructionVersionRequest,
     InstructionSetResponse,
     InstructionVersionResponse,
 )
+from services.instructions.authoring_assistant import InstructionAuthoringAssistant
 
 logger = get_logger(__name__)
 
@@ -566,6 +572,75 @@ async def activate_thread_instruction_version(
         user_id=str(current_user.id),
     )
     return await _instruction_set_response(db, instruction_set)
+
+
+# --- Instruction authoring assistant ---
+
+
+def _instruction_assistant_sse_line(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload, default=str)}\n\n"
+
+
+@router.post("/assistant/stream")
+async def stream_instruction_authoring_assistant(
+    body: InstructionAssistantStreamRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StreamingResponse:
+    """Stream instruction authoring assistant responses via SSE."""
+    if not body.messages:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one chat message is required",
+        )
+    if len(body.messages) > settings.instruction_authoring_max_messages:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"At most {settings.instruction_authoring_max_messages} messages allowed",
+        )
+
+    assistant = InstructionAuthoringAssistant()
+
+    async def event_generator() -> AsyncIterator[str]:
+        try:
+            yield _instruction_assistant_sse_line(
+                {"type": "status", "message": "Preparing response..."},
+            )
+            async for chunk in assistant.stream(db, user=current_user, request=body):
+                if isinstance(chunk, str):
+                    yield _instruction_assistant_sse_line({"type": "text", "text": chunk})
+                    continue
+                if chunk.get("type") == "done":
+                    yield _instruction_assistant_sse_line(
+                        {
+                            "type": "done",
+                            "input_tokens": chunk.get("input_tokens", 0),
+                            "output_tokens": chunk.get("output_tokens", 0),
+                            "cached_tokens": chunk.get("cached_tokens", 0),
+                        },
+                    )
+        except HTTPException as exc:
+            yield _instruction_assistant_sse_line(
+                {"type": "error", "message": str(exc.detail)},
+            )
+        except Exception as exc:
+            logger.warning(
+                "instruction_authoring_stream_failed",
+                user_id=str(current_user.id),
+                level=body.scope.level,
+                error=str(exc),
+            )
+            yield _instruction_assistant_sse_line({"type": "error", "message": str(exc)})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # --- Instruction Studio levels 1–3 ---

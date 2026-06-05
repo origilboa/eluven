@@ -3,10 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { InstructionAssistantPanel } from "@/components/instructions/instruction-assistant-panel";
 import { api } from "@/lib/api";
 import type {
   ActivateInstructionVersionRequest,
   CreateInstructionVersionRequest,
+  InstructionAssistantScope,
   InstructionSetResponse,
 } from "@/lib/types/api";
 import type { Locale } from "@/i18n.config";
@@ -29,6 +31,7 @@ type InstructionSetEditorProps = {
   threadTypeOptions?: ThreadTypeOption[];
   selectedThreadType?: string | null;
   onThreadTypeChange?: (threadType: string | null) => void;
+  assistantScope?: InstructionAssistantScope;
 };
 
 function formatTimestamp(value: string, locale: Locale): string {
@@ -59,6 +62,7 @@ export function InstructionSetEditor({
   threadTypeOptions,
   selectedThreadType = null,
   onThreadTypeChange,
+  assistantScope,
 }: InstructionSetEditorProps) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -160,6 +164,13 @@ export function InstructionSetEditor({
 
   const activeContent = data?.active_version?.content ?? null;
 
+  const resolvedAssistantScope = assistantScope
+    ? {
+        ...assistantScope,
+        thread_type: assistantScope.thread_type ?? selectedThreadType,
+      }
+    : undefined;
+
   return (
     <section className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
       <div className="space-y-1 text-start">
@@ -219,18 +230,39 @@ export function InstructionSetEditor({
 
             {editing ? (
               <form className="space-y-4" onSubmit={handleSave}>
-                <div className="space-y-2 text-start">
-                  <label htmlFor={`instruction-content-${fetchPath}`} className="block text-sm font-medium">
-                    {copy.content}
-                  </label>
-                  <textarea
-                    id={`instruction-content-${fetchPath}`}
-                    required
-                    rows={10}
-                    value={draftContent}
-                    onChange={(event) => setDraftContent(event.target.value)}
-                    className="block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 font-mono text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-                  />
+                <div
+                  className={
+                    resolvedAssistantScope
+                      ? "grid gap-4 lg:grid-cols-2 lg:items-start"
+                      : "space-y-4"
+                  }
+                >
+                  <div className="space-y-4">
+                    <div className="space-y-2 text-start">
+                      <label
+                        htmlFor={`instruction-content-${fetchPath}`}
+                        className="block text-sm font-medium"
+                      >
+                        {copy.content}
+                      </label>
+                      <textarea
+                        id={`instruction-content-${fetchPath}`}
+                        required
+                        rows={10}
+                        value={draftContent}
+                        onChange={(event) => setDraftContent(event.target.value)}
+                        className="block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 font-mono text-sm text-zinc-900 outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+                      />
+                    </div>
+                  </div>
+                  {resolvedAssistantScope ? (
+                    <InstructionAssistantPanel
+                      locale={locale}
+                      scope={resolvedAssistantScope}
+                      draftContent={draftContent}
+                      onApplyDraft={setDraftContent}
+                    />
+                  ) : null}
                 </div>
                 <div className="space-y-2 text-start">
                   <label htmlFor={`instruction-note-${fetchPath}`} className="block text-sm font-medium">

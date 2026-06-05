@@ -6,9 +6,14 @@ import type { Locale } from "@/i18n.config";
 type TaskInstructionPanelProps = {
   locale: Locale;
   taskId: string;
+  moduleType: string;
 };
 
-export function TaskInstructionPanel({ locale, taskId }: TaskInstructionPanelProps) {
+export function TaskInstructionPanel({
+  locale,
+  taskId,
+  moduleType,
+}: TaskInstructionPanelProps) {
   const copy =
     locale === "he"
       ? {
@@ -31,6 +36,12 @@ export function TaskInstructionPanel({ locale, taskId }: TaskInstructionPanelPro
       activatePath={`${basePath}/activate`}
       title={copy.title}
       subtitle={copy.subtitle}
+      assistantScope={{
+        authoring_target: "instruction_set",
+        level: "task",
+        task_id: taskId,
+        module_type: moduleType,
+      }}
     />
   );
 }

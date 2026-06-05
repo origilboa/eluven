@@ -69,6 +69,12 @@ export function ClusterInstructionPanel({
       threadTypeOptions={threadTypeOptions}
       selectedThreadType={selectedThreadType}
       onThreadTypeChange={setSelectedThreadType}
+      assistantScope={{
+        authoring_target: "instruction_set",
+        level: "cluster",
+        cluster_id: clusterId,
+        module_type: moduleType,
+      }}
     />
   );
 }

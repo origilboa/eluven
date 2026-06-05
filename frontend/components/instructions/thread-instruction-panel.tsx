@@ -33,6 +33,11 @@ export function ThreadInstructionPanel({ locale, threadId }: ThreadInstructionPa
       activatePath={`${basePath}/activate`}
       title={copy.title}
       subtitle={copy.subtitle}
+      assistantScope={{
+        authoring_target: "instruction_set",
+        level: "thread",
+        thread_id: threadId,
+      }}
     />
   );
 }

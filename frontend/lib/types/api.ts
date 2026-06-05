@@ -350,6 +350,25 @@ export type ActivateInstructionVersionRequest = {
 
 export type InstructionLevel = "platform" | "org" | "user";
 
+export type InstructionAuthoringTarget = "instruction_set" | "activity_library_default";
+
+export type InstructionAssistantScope = {
+  authoring_target: InstructionAuthoringTarget;
+  level: InstructionLevel | "cluster" | "task" | "thread";
+  cluster_id?: string;
+  task_id?: string;
+  thread_id?: string;
+  thread_type?: string | null;
+  module_type?: string | null;
+};
+
+export type InstructionAssistantStreamRequest = {
+  scope: InstructionAssistantScope;
+  draft_content: string;
+  messages: { role: "user" | "assistant"; content: string }[];
+  locale: "en" | "he";
+};
+
 export type AdminOrgResponse = {
   id: string;
   name: string;

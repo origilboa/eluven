@@ -122,6 +122,10 @@ export function InstructionStudioPanel({ locale, userRole }: InstructionStudioPa
           title={currentTab.label}
           subtitle={currentTab.subtitle}
           readOnlyMessage={copy.readOnly}
+          assistantScope={{
+            authoring_target: "instruction_set",
+            level: currentLevel,
+          }}
         />
       ) : null}
     </div>

@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     s3_documents_bucket: str
     bedrock_embed_model_id: str = "amazon.titan-embed-text-v1"
     default_bedrock_model_id: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    instruction_authoring_model_id: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    instruction_authoring_charter_path: str = ""
+    instruction_authoring_briefs_dir: str = ""
+    instruction_authoring_max_messages: int = 20
     bedrock_max_output_tokens: int = 8000
     context_history_token_limit: int = 20000
     context_keep_recent_messages: int = 10

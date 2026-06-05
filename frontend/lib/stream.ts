@@ -1,7 +1,7 @@
 import { getSession } from "next-auth/react";
 
 import { resolveApiUrl } from "@/lib/api";
-import type { StreamEvent } from "@/lib/types/api";
+import type { InstructionAssistantStreamRequest, StreamEvent } from "@/lib/types/api";
 
 function parseSseChunk(buffer: string): { events: StreamEvent[]; remainder: string } {
   const events: StreamEvent[] = [];
@@ -25,31 +25,10 @@ function parseSseChunk(buffer: string): { events: StreamEvent[]; remainder: stri
   return { events, remainder };
 }
 
-export async function streamThreadMessage(
-  threadId: string,
-  content: string,
+async function consumeSseResponse(
+  response: Response,
   onEvent: (event: StreamEvent) => void,
-  promptId?: string | null,
 ): Promise<void> {
-  const session = await getSession();
-  if (!session?.accessToken) {
-    throw new Error("Not authenticated");
-  }
-
-  const body: { content: string; prompt_id?: string } = { content };
-  if (promptId) {
-    body.prompt_id = promptId;
-  }
-
-  const response = await fetch(resolveApiUrl(`/threads/${threadId}/stream`), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.accessToken}`,
-    },
-    body: JSON.stringify(body),
-  });
-
   if (!response.ok) {
     throw new Error(`Stream request failed (${response.status})`);
   }
@@ -82,4 +61,53 @@ export async function streamThreadMessage(
       onEvent(event);
     }
   }
+}
+
+export async function streamThreadMessage(
+  threadId: string,
+  content: string,
+  onEvent: (event: StreamEvent) => void,
+  promptId?: string | null,
+): Promise<void> {
+  const session = await getSession();
+  if (!session?.accessToken) {
+    throw new Error("Not authenticated");
+  }
+
+  const body: { content: string; prompt_id?: string } = { content };
+  if (promptId) {
+    body.prompt_id = promptId;
+  }
+
+  const response = await fetch(resolveApiUrl(`/threads/${threadId}/stream`), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.accessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  await consumeSseResponse(response, onEvent);
+}
+
+export async function streamInstructionAssistant(
+  request: InstructionAssistantStreamRequest,
+  onEvent: (event: StreamEvent) => void,
+): Promise<void> {
+  const session = await getSession();
+  if (!session?.accessToken) {
+    throw new Error("Not authenticated");
+  }
+
+  const response = await fetch(resolveApiUrl("/instructions/assistant/stream"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.accessToken}`,
+    },
+    body: JSON.stringify(request),
+  });
+
+  await consumeSseResponse(response, onEvent);
 }
