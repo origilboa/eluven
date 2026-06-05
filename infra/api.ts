@@ -1,3 +1,4 @@
+import { bedrockPermissions } from "./bedrock-permissions";
 import { vpc, db } from "./database";
 import { documentProcessingQueue, workflowExecutionQueue } from "./queues";
 import { anthropicApiKey, dbPassword, nextAuthSecret } from "./secrets";
@@ -36,12 +37,7 @@ export const api = new sst.aws.Service("Api", {
     min: 1,
     max: 2,
   },
-  permissions: [
-    {
-      actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
-      resources: ["*"],
-    },
-  ],
+  permissions: bedrockPermissions,
   environment: {
     DATABASE_URL: $interpolate`postgresql+asyncpg://${db.username}:${db.password}@${db.host}:${db.port}/${db.database}`,
     NEXTAUTH_SECRET: nextAuthSecret.value,
@@ -53,6 +49,7 @@ export const api = new sst.aws.Service("Api", {
     LOG_LEVEL: "INFO",
     APP_BASE_URL: $app.stage === "production" ? "https://app.eluven.ai" : "http://localhost:3000",
     DEFAULT_BEDROCK_MODEL_ID: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    INSTRUCTION_AUTHORING_MODEL_ID: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
   },
   dev: {
     command: "poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000",

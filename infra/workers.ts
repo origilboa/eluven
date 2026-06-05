@@ -1,3 +1,4 @@
+import { bedrockPermissions } from "./bedrock-permissions";
 import { cluster } from "./api";
 import { db } from "./database";
 import { documentProcessingQueue, workflowExecutionQueue } from "./queues";
@@ -29,13 +30,6 @@ const workerLinks = [
   anthropicApiKey,
   dbPassword,
   nextAuthSecret,
-];
-
-const bedrockPermissions = [
-  {
-    actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
-    resources: ["*"],
-  },
 ];
 
 export const documentWorker = new sst.aws.Service("DocumentWorker", {

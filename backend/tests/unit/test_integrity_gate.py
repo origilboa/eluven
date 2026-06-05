@@ -19,6 +19,23 @@ from services.instructions.integrity_gate import (
 )
 
 
+def test_scope_keys_ignore_module_type_for_instruction_set() -> None:
+    scope_with_module = InstructionAssistantScope(
+        authoring_target=AuthoringTarget.INSTRUCTION_SET,
+        level="task",
+        task_id=str(uuid4()),
+        module_type="external_paper_review",
+    )
+    scope_without_module = InstructionAssistantScope(
+        authoring_target=AuthoringTarget.INSTRUCTION_SET,
+        level="task",
+        task_id=scope_with_module.task_id,
+    )
+    assert scope_key_from_assistant_scope(scope_with_module) == scope_key_from_assistant_scope(
+        scope_without_module,
+    )
+
+
 def test_scope_keys_match_instruction_set_and_assistant_scope() -> None:
     instruction_set = InstructionSet(
         level=InstructionLevel.PLATFORM,

@@ -20,6 +20,7 @@ from schemas.instruction_assistant import (
     InstructionIntegrityCheckResponse,
     InstructionIntegrityIssue,
 )
+from services.ai.bedrock_errors import bedrock_user_error_message
 from services.instructions.authoring_context import InstructionAuthoringContext
 from services.instructions.integrity_gate import (
     compute_content_hash,
@@ -195,7 +196,7 @@ class InstructionIntegrityChecker:
             logger.warning("instruction_integrity_llm_failed", error=str(exc))
             return {
                 "status": "fail",
-                "summary": "Integrity check failed due to an AI service error. Try again.",
+                "summary": bedrock_user_error_message(exc),
                 "issues": [],
             }
 

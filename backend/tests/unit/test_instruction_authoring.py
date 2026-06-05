@@ -23,6 +23,23 @@ from services.instructions.prompt_loader import (
 )
 
 
+def test_bedrock_stream_error_message_marketplace() -> None:
+    exc = ClientError(
+        {
+            "Error": {
+                "Code": "AccessDeniedException",
+                "Message": (
+                    "Model access is denied due to IAM user or service role is not "
+                    "authorized to perform aws-marketplace:Subscribe"
+                ),
+            },
+        },
+        "InvokeModelWithResponseStream",
+    )
+    message = _bedrock_stream_error_message(exc)
+    assert "Marketplace" in message
+
+
 def test_bedrock_stream_error_message_use_case_form() -> None:
     exc = ClientError(
         {

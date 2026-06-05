@@ -12,10 +12,10 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import boto3  # pyright: ignore[reportMissingTypeStubs]
-from botocore.exceptions import ClientError  # pyright: ignore[reportMissingTypeStubs]
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from services.ai.bedrock_errors import bedrock_user_error_message
 from core.logging import get_logger
 from models.user import User
 from schemas.instruction_assistant import InstructionAssistantStreamRequest
@@ -29,16 +29,10 @@ logger = get_logger(__name__)
 
 def _bedrock_stream_error_message(exc: BaseException) -> str:
     """Map Bedrock client errors to user-facing stream messages."""
-    if isinstance(exc, ClientError):
-        error_message = exc.response.get("Error", {}).get("Message", str(exc))
-        if "use case" in error_message.lower():
-            return (
-                "This AI model is not enabled for your AWS account yet. "
-                "Complete the Anthropic use-case form in the Bedrock console, "
-                "or contact your administrator."
-            )
-        return f"Bedrock request failed: {error_message}"
-    return "Bedrock streaming request failed"
+    message = bedrock_user_error_message(exc)
+    if message == "Bedrock request failed":
+        return "Bedrock streaming request failed"
+    return message
 
 
 class InstructionAuthoringAssistant:

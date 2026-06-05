@@ -39,11 +39,17 @@ def compute_content_hash(content: str) -> str:
 
 def scope_key_from_assistant_scope(scope: InstructionAssistantScope) -> str:
     """Stable scope identifier for token binding."""
+    # module_type is authoring context for InstructionSet layers, not part of set identity.
+    module_type = (
+        scope.module_type or ""
+        if scope.authoring_target == AuthoringTarget.ACTIVITY_LIBRARY_DEFAULT
+        else ""
+    )
     parts = [
         scope.authoring_target.value,
         scope.level,
         scope.thread_type or "",
-        scope.module_type or "",
+        module_type,
         scope.cluster_id or "",
         scope.task_id or "",
         scope.thread_id or "",
