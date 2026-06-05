@@ -42,6 +42,7 @@ RUN mkdir -p "$TIKTOKEN_CACHE_DIR" && python -c "import tiktoken; tiktoken.get_e
 ARG BACKEND_CACHE_BUST=20260603
 COPY backend/ .
 COPY scripts /app/scripts
+COPY docs/instructions /app/docs/instructions
 
 FROM python:3.12-slim AS runtime
 
@@ -63,6 +64,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /usr/local/tiktoken_cache /usr/local/tiktoken_cache
 COPY --from=builder /app/backend /app/backend
 COPY --from=builder /app/scripts /app/scripts
+COPY --from=builder /app/docs/instructions /app/docs/instructions
 
 EXPOSE 8000
 
