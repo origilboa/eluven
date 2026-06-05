@@ -74,6 +74,8 @@ PUT    /api/v1/admin/activity-library/{entry_id}/prompts
 
 Editable fields include `default_instruction_content` (copied to each new Thread on create), model routing, token budget, and activity prompts. `thread_type` slug is immutable after create.
 
+Activity Type Studio (guided wizard + quick create with instruction and prompt assistants) is specified in [activity-type-studio-v1.md](activity-type-studio-v1.md).
+
 ## Out of scope
 
 Budget, usage, storage quotas, SES email, self-registration, user deletion, audit log UI.

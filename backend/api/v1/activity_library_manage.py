@@ -1,4 +1,4 @@
-"""Admin ActivityLibrary management (app_admin only)."""
+"""Org-scoped ActivityLibrary management."""
 
 from __future__ import annotations
 
@@ -9,13 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_app_admin_user, get_db
+from api.deps import get_db, get_org_admin_user
 from core.config import settings
 from core.logging import get_logger
-from core.platform import PLATFORM_ORG_ID
 from models.activity import ActivityLibraryEntry, ActivityPrompt, PromptStage
 from models.user import User
-from services.activity.instruction_sync import sync_instruction_set_from_activity_default
 from schemas.admin_activity import (
     AdminActivityLibraryDetailResponse,
     AdminActivityLibraryEntryResponse,
@@ -24,10 +22,11 @@ from schemas.admin_activity import (
     ReplaceActivityPromptsRequest,
     UpdateActivityLibraryEntryRequest,
 )
+from services.activity.instruction_sync import sync_instruction_set_from_activity_default
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/admin/activity-library", tags=["admin-activity-library"])
+router = APIRouter(prefix="/activity-library/manage", tags=["activity-library-manage"])
 
 _ALLOWED_MODULE_TYPES = frozenset({"external_paper_review", "student_paper_review"})
 
@@ -66,12 +65,16 @@ def _entry_response(
     )
 
 
-async def _get_platform_entry(db: AsyncSession, entry_id: UUID) -> ActivityLibraryEntry:
+async def _get_org_entry(
+    db: AsyncSession,
+    entry_id: UUID,
+    org_id: UUID,
+) -> ActivityLibraryEntry:
     result = await db.execute(
         select(ActivityLibraryEntry).where(
             ActivityLibraryEntry.id == entry_id,
-            ActivityLibraryEntry.scope == "platform",
-            ActivityLibraryEntry.org_id == PLATFORM_ORG_ID,
+            ActivityLibraryEntry.scope == "org",
+            ActivityLibraryEntry.org_id == org_id,
         ),
     )
     entry = result.scalar_one_or_none()
@@ -88,17 +91,42 @@ def _validate_prompts_for_automation(entry: ActivityLibraryEntry, prompt_count: 
         )
 
 
+async def _detail_response(
+    db: AsyncSession,
+    entry: ActivityLibraryEntry,
+) -> AdminActivityLibraryDetailResponse:
+    prompts_result = await db.execute(
+        select(ActivityPrompt)
+        .where(ActivityPrompt.activity_entry_id == entry.id)
+        .order_by(ActivityPrompt.sequence_index.asc()),
+    )
+    prompts = list(prompts_result.scalars().all())
+    base = _entry_response(entry, prompt_count=len(prompts))
+    return AdminActivityLibraryDetailResponse(
+        **base.model_dump(),
+        prompts=[
+            AdminActivityPromptResponse(
+                id=prompt.id,
+                prompt_text=prompt.prompt_text,
+                stage=prompt.stage.value,
+                sequence_index=prompt.sequence_index,
+            )
+            for prompt in prompts
+        ],
+    )
+
+
 @router.get("", response_model=list[AdminActivityLibraryEntryResponse])
-async def list_admin_activity_library(
-    _admin: Annotated[User, Depends(get_app_admin_user)],
+async def list_org_activity_library(
+    current_user: Annotated[User, Depends(get_org_admin_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     module_type: Annotated[str | None, Query()] = None,
     include_inactive: Annotated[bool, Query()] = False,
 ) -> list[AdminActivityLibraryEntryResponse]:
-    """List platform activity types for admin management."""
+    """List org-scoped activity types for the current organization."""
     query = select(ActivityLibraryEntry).where(
-        ActivityLibraryEntry.scope == "platform",
-        ActivityLibraryEntry.org_id == PLATFORM_ORG_ID,
+        ActivityLibraryEntry.scope == "org",
+        ActivityLibraryEntry.org_id == current_user.org_id,
     )
     if module_type is not None:
         query = query.where(ActivityLibraryEntry.module_type == module_type)
@@ -118,43 +146,22 @@ async def list_admin_activity_library(
         responses.append(_entry_response(entry, prompt_count=count))
 
     logger.info(
-        "admin_activity_library_listed",
-        module_type=module_type,
-        include_inactive=include_inactive,
+        "org_activity_library_listed",
+        org_id=str(current_user.org_id),
         count=len(responses),
     )
     return responses
 
 
 @router.get("/{entry_id}", response_model=AdminActivityLibraryDetailResponse)
-async def get_admin_activity_library_entry(
+async def get_org_activity_library_entry(
     entry_id: UUID,
-    _admin: Annotated[User, Depends(get_app_admin_user)],
+    current_user: Annotated[User, Depends(get_org_admin_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AdminActivityLibraryDetailResponse:
-    """Get activity type with activity prompts."""
-    entry = await _get_platform_entry(db, entry_id)
-
-    prompts_result = await db.execute(
-        select(ActivityPrompt)
-        .where(ActivityPrompt.activity_entry_id == entry.id)
-        .order_by(ActivityPrompt.sequence_index.asc()),
-    )
-    prompts = list(prompts_result.scalars().all())
-
-    base = _entry_response(entry, prompt_count=len(prompts))
-    return AdminActivityLibraryDetailResponse(
-        **base.model_dump(),
-        prompts=[
-            AdminActivityPromptResponse(
-                id=prompt.id,
-                prompt_text=prompt.prompt_text,
-                stage=prompt.stage.value,
-                sequence_index=prompt.sequence_index,
-            )
-            for prompt in prompts
-        ],
-    )
+    """Get org activity type with prompts."""
+    entry = await _get_org_entry(db, entry_id, current_user.org_id)
+    return await _detail_response(db, entry)
 
 
 @router.post(
@@ -162,12 +169,12 @@ async def get_admin_activity_library_entry(
     response_model=AdminActivityLibraryDetailResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_admin_activity_library_entry(
+async def create_org_activity_library_entry(
     body: CreateActivityLibraryEntryRequest,
-    admin: Annotated[User, Depends(get_app_admin_user)],
+    current_user: Annotated[User, Depends(get_org_admin_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AdminActivityLibraryDetailResponse:
-    """Create a platform activity type."""
+    """Create an org-scoped activity type (may shadow platform slug for this org)."""
     if body.module_type not in _ALLOWED_MODULE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -178,22 +185,23 @@ async def create_admin_activity_library_entry(
         select(ActivityLibraryEntry.id).where(
             ActivityLibraryEntry.thread_type == body.thread_type,
             ActivityLibraryEntry.module_type == body.module_type,
-            ActivityLibraryEntry.scope == "platform",
+            ActivityLibraryEntry.scope == "org",
+            ActivityLibraryEntry.org_id == current_user.org_id,
         ),
     )
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Activity type already exists for this module",
+            detail="Activity type already exists for this organization and module",
         )
 
     entry = ActivityLibraryEntry(
-        org_id=PLATFORM_ORG_ID,
+        org_id=current_user.org_id,
         thread_type=body.thread_type,
         module_type=body.module_type,
         display_name=body.display_name,
         description=body.description,
-        scope="platform",
+        scope="org",
         is_active=body.is_active,
         default_model_id=body.default_model_id or settings.default_bedrock_model_id,
         fallback_model_id=body.fallback_model_id,
@@ -210,28 +218,28 @@ async def create_admin_activity_library_entry(
             db,
             entry=entry,
             content=entry.default_instruction_content,
-            user_id=admin.id,
+            user_id=current_user.id,
         )
 
     logger.info(
-        "admin_activity_library_created",
+        "org_activity_library_created",
         entry_id=str(entry.id),
         thread_type=entry.thread_type,
-        module_type=entry.module_type,
-        user_id=str(admin.id),
+        org_id=str(current_user.org_id),
+        user_id=str(current_user.id),
     )
-    return await get_admin_activity_library_entry(entry.id, admin, db)
+    return await _detail_response(db, entry)
 
 
 @router.patch("/{entry_id}", response_model=AdminActivityLibraryDetailResponse)
-async def update_admin_activity_library_entry(
+async def update_org_activity_library_entry(
     entry_id: UUID,
     body: UpdateActivityLibraryEntryRequest,
-    admin: Annotated[User, Depends(get_app_admin_user)],
+    current_user: Annotated[User, Depends(get_org_admin_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AdminActivityLibraryDetailResponse:
-    """Update a platform activity type."""
-    entry = await _get_platform_entry(db, entry_id)
+    """Update an org-scoped activity type."""
+    entry = await _get_org_entry(db, entry_id, current_user.org_id)
     updates = body.model_dump(exclude_unset=True)
 
     for field, value in updates.items():
@@ -246,28 +254,28 @@ async def update_admin_activity_library_entry(
             db,
             entry=entry,
             content=entry.default_instruction_content,
-            user_id=admin.id,
+            user_id=current_user.id,
         )
 
     await db.flush()
     logger.info(
-        "admin_activity_library_updated",
+        "org_activity_library_updated",
         entry_id=str(entry_id),
-        fields=list(updates.keys()),
-        user_id=str(admin.id),
+        org_id=str(current_user.org_id),
+        user_id=str(current_user.id),
     )
-    return await get_admin_activity_library_entry(entry_id, admin, db)
+    return await _detail_response(db, entry)
 
 
 @router.put("/{entry_id}/prompts", response_model=AdminActivityLibraryDetailResponse)
-async def replace_activity_prompts(
+async def replace_org_activity_prompts(
     entry_id: UUID,
     body: ReplaceActivityPromptsRequest,
-    admin: Annotated[User, Depends(get_app_admin_user)],
+    current_user: Annotated[User, Depends(get_org_admin_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AdminActivityLibraryDetailResponse:
-    """Replace all activity prompts for an activity type."""
-    entry = await _get_platform_entry(db, entry_id)
+    """Replace all activity prompts for an org activity type."""
+    entry = await _get_org_entry(db, entry_id, current_user.org_id)
     _validate_prompts_for_automation(entry, len(body.prompts))
 
     await db.execute(
@@ -288,25 +296,9 @@ async def replace_activity_prompts(
 
     await db.flush()
     logger.info(
-        "admin_activity_library_prompts_replaced",
+        "org_activity_library_prompts_replaced",
         entry_id=str(entry_id),
         prompt_count=len(body.prompts),
-        user_id=str(admin.id),
+        user_id=str(current_user.id),
     )
-    return await get_admin_activity_library_entry(entry_id, admin, db)
-
-
-# Deprecated alias for existing clients
-@router.put(
-    "/{entry_id}/opening-questions",
-    response_model=AdminActivityLibraryDetailResponse,
-    include_in_schema=False,
-)
-async def replace_opening_questions_alias(
-    entry_id: UUID,
-    body: ReplaceActivityPromptsRequest,
-    admin: Annotated[User, Depends(get_app_admin_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> AdminActivityLibraryDetailResponse:
-    """Deprecated alias for replace_activity_prompts."""
-    return await replace_activity_prompts(entry_id, body, admin, db)
+    return await _detail_response(db, entry)

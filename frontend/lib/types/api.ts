@@ -352,6 +352,14 @@ export type InstructionLevel = "platform" | "org" | "user";
 
 export type InstructionAuthoringTarget = "instruction_set" | "activity_library_default";
 
+export type ActivityDraftMetadata = {
+  display_name?: string | null;
+  description?: string | null;
+  thread_type?: string | null;
+  module_type?: string | null;
+  supports_automation?: boolean | null;
+};
+
 export type InstructionAssistantScope = {
   authoring_target: InstructionAuthoringTarget;
   level: InstructionLevel | "cluster" | "task" | "thread";
@@ -360,6 +368,67 @@ export type InstructionAssistantScope = {
   thread_id?: string;
   thread_type?: string | null;
   module_type?: string | null;
+  activity_entry_id?: string;
+  activity_draft?: ActivityDraftMetadata | null;
+};
+
+export type PromptAuthoringMode = "create" | "edit";
+
+export type PromptAssistantScope = {
+  authoring_mode: PromptAuthoringMode;
+  level: "platform" | "org";
+  activity_entry_id?: string;
+  thread_type?: string | null;
+  module_type?: string | null;
+  activity_draft?: ActivityDraftMetadata | null;
+  supports_automation?: boolean | null;
+  default_instruction_content?: string | null;
+};
+
+export type ActivityPromptDraftItem = {
+  prompt_text: string;
+  stage: "opening" | "mid" | "closing";
+  sequence_index: number;
+};
+
+export type PromptAssistantStreamRequest = {
+  scope: PromptAssistantScope;
+  draft_prompts: ActivityPromptDraftItem[];
+  messages: { role: "user" | "assistant"; content: string }[];
+  locale: "en" | "he";
+};
+
+export type ActivityAssistantStep =
+  | "purpose"
+  | "identity"
+  | "mode"
+  | "instructions"
+  | "prompts"
+  | "routing"
+  | "review";
+
+export type ActivityTypeDraft = {
+  module_type?: string | null;
+  purpose_notes?: string | null;
+  thread_type?: string | null;
+  display_name?: string | null;
+  description?: string | null;
+  supports_automation?: boolean | null;
+  default_instruction_content?: string | null;
+  prompts?: ActivityPromptDraftItem[];
+  default_model_id?: string | null;
+  fallback_model_id?: string | null;
+  token_budget?: number | null;
+  token_budget_warning_threshold?: number | null;
+  model_routing_rationale?: string | null;
+  scope_level?: "platform" | "org";
+};
+
+export type ActivityOrchestratorStreamRequest = {
+  step: ActivityAssistantStep;
+  draft: ActivityTypeDraft;
+  messages: { role: "user" | "assistant"; content: string }[];
+  locale: "en" | "he";
 };
 
 export type InstructionAssistantStreamRequest = {

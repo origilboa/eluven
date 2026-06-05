@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { InstructionAssistantPanel } from "@/components/instructions/instruction-assistant-panel";
+import { AuthoringSplitLayout } from "@/components/shared/authoring-split-layout";
 import { api } from "@/lib/api";
 import type {
   ActivateInstructionVersionRequest,
@@ -229,13 +230,8 @@ export function InstructionSetEditor({
             ) : null}
 
             {editing ? (
-              <div
-                className={
-                  resolvedAssistantScope
-                    ? "grid gap-4 lg:grid-cols-2 lg:items-start"
-                    : "space-y-4"
-                }
-              >
+              <AuthoringSplitLayout
+                form={
                 <form className="space-y-4" onSubmit={handleSave}>
                   <div className="space-y-2 text-start">
                     <label
@@ -284,15 +280,18 @@ export function InstructionSetEditor({
                     </button>
                   </div>
                 </form>
-                {resolvedAssistantScope ? (
-                  <InstructionAssistantPanel
-                    locale={locale}
-                    scope={resolvedAssistantScope}
-                    draftContent={draftContent}
-                    onApplyDraft={setDraftContent}
-                  />
-                ) : null}
-              </div>
+                }
+                assistant={
+                  resolvedAssistantScope ? (
+                    <InstructionAssistantPanel
+                      locale={locale}
+                      scope={resolvedAssistantScope}
+                      draftContent={draftContent}
+                      onApplyDraft={setDraftContent}
+                    />
+                  ) : undefined
+                }
+              />
             ) : (
               <div className="rounded-lg bg-zinc-50 p-4 text-start dark:bg-zinc-900">
                 {activeContent ? (

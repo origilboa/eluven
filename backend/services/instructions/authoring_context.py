@@ -89,9 +89,13 @@ class InstructionAuthoringContext:
     ) -> AuthoringAssembledContext:
         """Resolve scope, auth, and compose system prompt."""
         if scope.authoring_target == AuthoringTarget.ACTIVITY_LIBRARY_DEFAULT:
-            raise HTTPException(
-                status_code=status.HTTP_501_NOT_IMPLEMENTED,
-                detail="Activity library authoring target is not implemented yet",
+            return await self._build_activity_library_default(
+                session,
+                scope=scope,
+                user=user,
+                draft_content=draft_content,
+                chat_messages=chat_messages,
+                locale=locale,
             )
 
         editable_level = InstructionLevel(scope.level)
@@ -230,6 +234,132 @@ class InstructionAuthoringContext:
             task_thread_type_filter=task_thread_type_filter,
             entity_title=entity_title,
         )
+
+    async def _build_activity_library_default(
+        self,
+        session: AsyncSession,
+        *,
+        scope: InstructionAssistantScope,
+        user: User,
+        draft_content: str,
+        chat_messages: list[dict[str, str]],
+        locale: str,
+    ) -> AuthoringAssembledContext:
+        """Build context for ActivityLibrary default_instruction_content authoring."""
+        editable_level = InstructionLevel(scope.level)
+        if editable_level not in (InstructionLevel.PLATFORM, InstructionLevel.ORG):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="activity_library_default requires platform or org level",
+            )
+        self._require_studio_level_write(editable_level, user)
+
+        thread_type = scope.thread_type
+        module_type = scope.module_type
+        if scope.activity_draft:
+            thread_type = thread_type or scope.activity_draft.thread_type
+            module_type = module_type or scope.activity_draft.module_type
+
+        entry: ActivityLibraryEntry | None = None
+        if scope.activity_entry_id:
+            entry = await session.get(ActivityLibraryEntry, UUID(scope.activity_entry_id))
+            if entry is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Activity entry not found",
+                )
+            await self._require_activity_entry_access(entry, user)
+            thread_type = entry.thread_type
+            module_type = entry.module_type
+
+        if not thread_type or not module_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="thread_type and module_type are required for activity library authoring",
+            )
+
+        context = _EntityContext(
+            org_id=user.org_id,
+            owner_user_id=user.id,
+            cluster_id=None,
+            task_id=None,
+            thread_id=None,
+            module_type=module_type,
+            resolved_thread_type=thread_type,
+            task_thread_type_filter=None,
+            entity_title=scope.activity_draft.display_name if scope.activity_draft else None,
+        )
+
+        inherited_blocks: list[str] = []
+        if editable_level == InstructionLevel.ORG:
+            platform_text = await self._instruction_for_level(
+                session,
+                InstructionLevel.PLATFORM,
+                org_id=context.org_id,
+                thread_type=thread_type,
+            )
+            if platform_text:
+                inherited_blocks.append(
+                    f"## Inherited: platform\n{platform_text}",
+                )
+
+        metadata_block = await self._metadata_block(session, context=context, scope=scope)
+        if entry is not None:
+            metadata_block = (
+                f"{metadata_block}\nAuthoring mode: edit\nActivity entry id: {entry.id}"
+            )
+        else:
+            metadata_block = f"{metadata_block}\nAuthoring mode: create"
+
+        level_brief = load_level_brief(editable_level)
+        charter = load_charter_text()
+
+        system_parts = [
+            charter,
+            (
+                "## Activity library authoring\n"
+                "You are authoring ActivityLibrary `default_instruction_content` "
+                f"at {editable_level.value} level for thread_type `{thread_type}`."
+            ),
+            f"## Level brief ({editable_level.value})\n{level_brief}".strip()
+            if level_brief
+            else "",
+            f"## Session\nEditable target: activity_library_default\nWorking language: {locale}",
+            metadata_block,
+            "\n\n".join(inherited_blocks),
+            "## Current draft (default_instruction_content only)\n"
+            + (draft_content.strip() if draft_content.strip() else "(empty)"),
+        ]
+        system_text = "\n\n---\n\n".join(part for part in system_parts if part.strip())
+
+        from services.instructions.prompt_loader import charter_version
+
+        return AuthoringAssembledContext(
+            system_text=system_text,
+            messages=chat_messages,
+            charter_version=charter_version(),
+            editable_level=editable_level,
+        )
+
+    @staticmethod
+    async def _require_activity_entry_access(entry: ActivityLibraryEntry, user: User) -> None:
+        if entry.scope == "platform":
+            if user.role != UserRole.APP_ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Platform activity types require app admin access",
+                )
+            return
+        if user.role not in (UserRole.ORG_ADMIN, UserRole.APP_ADMIN):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Organization activity types require org admin access",
+            )
+        if entry.org_id != user.org_id and user.role != UserRole.APP_ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Activity entry not in your organization",
+            )
 
     @staticmethod
     def _require_studio_level_write(level: InstructionLevel, user: User) -> None:

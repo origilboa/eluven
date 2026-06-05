@@ -1,7 +1,12 @@
 import { getSession } from "next-auth/react";
 
 import { resolveApiUrl } from "@/lib/api";
-import type { InstructionAssistantStreamRequest, StreamEvent } from "@/lib/types/api";
+import type {
+  ActivityOrchestratorStreamRequest,
+  InstructionAssistantStreamRequest,
+  PromptAssistantStreamRequest,
+  StreamEvent,
+} from "@/lib/types/api";
 
 function parseSseChunk(buffer: string): { events: StreamEvent[]; remainder: string } {
   const events: StreamEvent[] = [];
@@ -101,6 +106,48 @@ export async function streamInstructionAssistant(
   }
 
   const response = await fetch(resolveApiUrl("/instructions/assistant/stream"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.accessToken}`,
+    },
+    body: JSON.stringify(request),
+  });
+
+  await consumeSseResponse(response, onEvent);
+}
+
+export async function streamPromptAssistant(
+  request: PromptAssistantStreamRequest,
+  onEvent: (event: StreamEvent) => void,
+): Promise<void> {
+  const session = await getSession();
+  if (!session?.accessToken) {
+    throw new Error("Not authenticated");
+  }
+
+  const response = await fetch(resolveApiUrl("/activity-library/prompts/assistant/stream"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.accessToken}`,
+    },
+    body: JSON.stringify(request),
+  });
+
+  await consumeSseResponse(response, onEvent);
+}
+
+export async function streamActivityOrchestrator(
+  request: ActivityOrchestratorStreamRequest,
+  onEvent: (event: StreamEvent) => void,
+): Promise<void> {
+  const session = await getSession();
+  if (!session?.accessToken) {
+    throw new Error("Not authenticated");
+  }
+
+  const response = await fetch(resolveApiUrl("/activity-library/assistant/stream"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
