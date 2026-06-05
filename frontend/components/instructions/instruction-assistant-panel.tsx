@@ -102,10 +102,6 @@ export function InstructionAssistantPanel({
             applyConfirm: "להחליף את תוכן ההוראות בטיוטה שהעוזר הציע?",
             applyPartialConfirm: "להוסיף את התיקון החלקי לטיוטה?",
             statusPreparing: "מכין תשובה…",
-            reviewIntegrity: "בדיקת שלמות (שיחה)",
-            reviewIntegrityPrompt:
-              "הרץ בדיקת שלמות על הטיוטה הנוכחית לפי רשימת הבדיקה המלאה.",
-            reviewIntegrityEmpty: "הוסף טקסט לטיוטה לפני בדיקת שלמות.",
             reviewCompleteness: "בדיקת שלמות תוכן",
             reviewCompletenessPrompt:
               "הרץ בדיקת שלמות תוכן — מה חסר או דל בטיוטה לעומת השכבות שמעל?",
@@ -126,10 +122,6 @@ export function InstructionAssistantPanel({
             applyConfirm: "Replace the instruction textarea with the assistant's proposed draft?",
             applyPartialConfirm: "Append the assistant's partial fix to the draft?",
             statusPreparing: "Preparing response…",
-            reviewIntegrity: "Review draft integrity (chat)",
-            reviewIntegrityPrompt:
-              "Run an integrity review on my current draft using the full checklist.",
-            reviewIntegrityEmpty: "Add draft text before running an integrity review.",
             reviewCompleteness: "Review completeness",
             reviewCompletenessPrompt:
               "Run a completeness review — what is missing or thin compared to inherited layers?",
@@ -184,7 +176,7 @@ export function InstructionAssistantPanel({
 
   async function sendMessage(
     messageText?: string,
-    options?: { integrityReview?: boolean; completenessReview?: boolean },
+    options?: { completenessReview?: boolean },
   ) {
     const trimmed = (messageText ?? input).trim();
     if (!trimmed || isStreaming || disabled) {
@@ -237,7 +229,6 @@ export function InstructionAssistantPanel({
             draft_content: draftContent,
             messages: chatPayload,
             locale,
-            integrity_review: options?.integrityReview ?? false,
             completeness_review: options?.completenessReview ?? false,
           },
           (streamEvent) => handleStreamEvent(streamEvent, assistantId),
@@ -353,20 +344,6 @@ export function InstructionAssistantPanel({
               className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
             >
               {copy.reviewCompleteness}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!draftContent.trim()) {
-                  setError(copy.reviewIntegrityEmpty);
-                  return;
-                }
-                void sendMessage(copy.reviewIntegrityPrompt, { integrityReview: true });
-              }}
-              disabled={disabled || isStreaming || !draftContent.trim()}
-              className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
-            >
-              {copy.reviewIntegrity}
             </button>
           </>
         ) : null}
